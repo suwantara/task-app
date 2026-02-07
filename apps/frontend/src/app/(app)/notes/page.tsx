@@ -54,6 +54,7 @@ export default function NotesPage() {
   const [editingContent, setEditingContent] = useState('');
   const [editingTitle, setEditingTitle] = useState('');
   const [saving, setSaving] = useState(false);
+  const [creating, setCreating] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const autoSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -103,7 +104,8 @@ export default function NotesPage() {
 
   const handleCreateNote = async (e: React.BaseSyntheticEvent) => {
     e.preventDefault();
-    if (!newNoteTitle.trim() || !selectedWorkspaceId) return;
+    if (!newNoteTitle.trim() || !selectedWorkspaceId || creating) return;
+    setCreating(true);
 
     try {
       const newNote = await apiClient.createNote(
@@ -118,6 +120,8 @@ export default function NotesPage() {
       setEditingContent('');
     } catch (error) {
       console.error('Failed to create note:', error);
+    } finally {
+      setCreating(false);
     }
   };
 
@@ -369,7 +373,7 @@ export default function NotesPage() {
               >
                 Cancel
               </Button>
-              <Button type="submit">Create</Button>
+              <Button type="submit" disabled={creating}>Create</Button>
             </DialogFooter>
           </form>
         </DialogContent>

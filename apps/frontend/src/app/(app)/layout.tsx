@@ -8,6 +8,7 @@ import { AppSidebar } from '@/components/app-sidebar';
 import { Separator } from '@/components/ui/separator';
 import { SocketProvider } from '@/contexts/socket-context';
 import { PresenceIndicator } from '@/components/presence-indicator';
+import { TooltipProvider } from '@/components/ui/tooltip';
 
 export default function AppLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   const { user, loading } = useAuth();
@@ -31,19 +32,21 @@ export default function AppLayout({ children }: Readonly<{ children: React.React
 
   return (
     <SocketProvider>
-      <SidebarProvider>
-        <AppSidebar />
-        <SidebarInset>
-          <header className="flex h-12 shrink-0 items-center gap-2 border-b px-4">
-            <SidebarTrigger className="-ml-1" />
-            <Separator orientation="vertical" className="mr-2 h-4" />
-            <div className="ml-auto">
-              <PresenceIndicator />
-            </div>
-          </header>
-          <main className="flex-1">{children}</main>
-        </SidebarInset>
-      </SidebarProvider>
+      <TooltipProvider delayDuration={200}>
+        <SidebarProvider>
+          <AppSidebar />
+          <SidebarInset>
+            <header className="flex h-12 shrink-0 items-center gap-2 border-b px-4">
+              <SidebarTrigger className="-ml-1" />
+              <Separator orientation="vertical" className="mr-2 h-4" />
+              <div className="ml-auto">
+                <PresenceIndicator />
+              </div>
+            </header>
+            <main className="flex-1">{children}</main>
+          </SidebarInset>
+        </SidebarProvider>
+      </TooltipProvider>
     </SocketProvider>
   );
 }

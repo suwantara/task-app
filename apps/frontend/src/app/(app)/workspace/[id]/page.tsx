@@ -6,7 +6,7 @@ import { useRouter, useParams } from 'next/navigation';
 import Link from 'next/link';
 import { apiClient } from '@/lib/api';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardDescription, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
@@ -20,7 +20,24 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { Plus, Share2 } from 'lucide-react';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
+import { Plus, Share2, MoreHorizontal, Pencil, Trash2, Kanban } from 'lucide-react';
 
 interface WorkspaceMember {
   id: string;
@@ -63,6 +80,14 @@ export default function WorkspacePage() {
   const [shareOpen, setShareOpen] = useState(false);
   const [newBoardName, setNewBoardName] = useState('');
   const [newBoardDescription, setNewBoardDescription] = useState('');
+  const [creating, setCreating] = useState(false);
+
+  // Rename
+  const [renamingBoard, setRenamingBoard] = useState<Board | null>(null);
+  const [renameValue, setRenameValue] = useState('');
+
+  // Delete
+  const [deletingBoard, setDeletingBoard] = useState<Board | null>(null);
 
   useEffect(() => {
     if (!authLoading && !user) {
@@ -95,7 +120,8 @@ export default function WorkspacePage() {
 
   const handleCreateBoard = async (e: React.BaseSyntheticEvent) => {
     e.preventDefault();
-    if (!newBoardName.trim()) return;
+    if (!newBoardName.trim() || creating) return;
+    setCreating(true);
 
     try {
       await apiClient.createBoard(workspaceId, newBoardName, newBoardDescription);
@@ -105,6 +131,30 @@ export default function WorkspacePage() {
       loadWorkspaceData();
     } catch (error) {
       console.error('Failed to create board:', error);
+    } finally {
+      setCreating(false);
+    }
+  };
+
+  const handleRenameBoard = async () => {
+    if (!renamingBoard || !renameValue.trim()) return;
+    try {
+      await apiClient.updateBoard(renamingBoard.id, { name: renameValue });
+      setRenamingBoard(null);
+      loadWorkspaceData();
+    } catch (error) {
+      console.error('Failed to rename board:', error);
+    }
+  };
+
+  const handleDeleteBoard = async () => {
+    if (!deletingBoard) return;
+    try {
+      await apiClient.deleteBoard(deletingBoard.id);
+      setDeletingBoard(null);
+      loadWorkspaceData();
+    } catch (error) {
+      console.error('Failed to delete board:', error);
     }
   };
 
@@ -135,27 +185,67 @@ export default function WorkspacePage() {
         </div>
       </div>
 
-      <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
         {boards.map((board) => (
-          <Link key={board.id} href={`/board/${board.id}`}>
-            <Card className="hover:shadow-lg transition-shadow cursor-pointer">
-              <CardHeader>
-                <CardTitle>{board.name}</CardTitle>
-                {board.description && (
-                  <CardDescription>{board.description}</CardDescription>
-                )}
-              </CardHeader>
-              <CardContent>
-                <p className="text-sm text-muted-foreground">
-                  Created {new Date(board.createdAt).toLocaleDateString()}
-                </p>
-              </CardContent>
-            </Card>
-          </Link>
+          <Card
+            key={board.id}
+            className="group relative cursor-pointer p-3 transition-shadow hover:shadow-md"
+          >
+            <Link href={`/board/${board.id}`} className="block">
+              <div className="flex items-start gap-2.5">
+                <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary">
+                  <Kanban className="h-4 w-4" />
+                </div>
+                <div className="min-w-0 flex-1 pr-6">
+                  <CardTitle className="text-sm leading-tight line-clamp-1">
+                    {board.name}
+                  </CardTitle>
+                  {board.description && (
+                    <CardDescription className="mt-1 text-xs line-clamp-2">
+                      {board.description}
+                    </CardDescription>
+                  )}
+                  <p className="mt-1.5 text-[10px] text-muted-foreground">
+                    {new Date(board.createdAt).toLocaleDateString()}
+                  </p>
+                </div>
+              </div>
+            </Link>
+            {/* Dropdown menu */}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button
+                  className="absolute right-2 top-2 rounded-md p-1 opacity-0 transition-opacity hover:bg-muted group-hover:opacity-100"
+                  onClick={(e) => e.preventDefault()}
+                >
+                  <MoreHorizontal className="h-4 w-4 text-muted-foreground" />
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-40">
+                <DropdownMenuItem
+                  onClick={() => {
+                    setRenamingBoard(board);
+                    setRenameValue(board.name);
+                  }}
+                >
+                  <Pencil className="mr-2 h-3.5 w-3.5" />
+                  Rename
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  onClick={() => setDeletingBoard(board)}
+                  className="text-destructive focus:text-destructive"
+                >
+                  <Trash2 className="mr-2 h-3.5 w-3.5" />
+                  Delete
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </Card>
         ))}
 
         {boards.length === 0 && (
-          <div className="col-span-full text-center py-12">
+          <div className="col-span-full py-12 text-center">
             <p className="text-muted-foreground">
               No boards yet. Create your first board to get started!
             </p>
@@ -163,6 +253,7 @@ export default function WorkspacePage() {
         )}
       </div>
 
+      {/* Create Board Dialog */}
       <Dialog open={showCreateModal} onOpenChange={setShowCreateModal}>
         <DialogContent>
           <DialogHeader>
@@ -206,11 +297,63 @@ export default function WorkspacePage() {
               >
                 Cancel
               </Button>
-              <Button type="submit">Create</Button>
+              <Button type="submit" disabled={creating}>Create</Button>
             </DialogFooter>
           </form>
         </DialogContent>
       </Dialog>
+
+      {/* Rename Board Dialog */}
+      <Dialog open={!!renamingBoard} onOpenChange={(open) => !open && setRenamingBoard(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Rename Board</DialogTitle>
+            <DialogDescription>Enter a new name for this board.</DialogDescription>
+          </DialogHeader>
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              handleRenameBoard();
+            }}
+          >
+            <div className="py-4">
+              <Input
+                value={renameValue}
+                onChange={(e) => setRenameValue(e.target.value)}
+                placeholder="Board name"
+                autoFocus
+              />
+            </div>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setRenamingBoard(null)}>
+                Cancel
+              </Button>
+              <Button type="submit">Save</Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Board Confirmation */}
+      <AlertDialog open={!!deletingBoard} onOpenChange={(open) => !open && setDeletingBoard(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Board</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete &quot;{deletingBoard?.name}&quot;? This will permanently remove all columns and tasks in this board. This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDeleteBoard}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {workspace && (
         <ShareDialog

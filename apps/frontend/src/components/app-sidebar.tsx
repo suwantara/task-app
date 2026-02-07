@@ -7,6 +7,7 @@ import { useAuth } from '@/contexts/auth-context';
 import { apiClient } from '@/lib/api';
 import { ShareDialog } from '@/components/share-dialog';
 import { WorkspaceMembers } from '@/components/workspace-members';
+import { Input } from '@/components/ui/input';
 import {
   Sidebar,
   SidebarContent,
@@ -16,6 +17,7 @@ import {
   SidebarGroupLabel,
   SidebarHeader,
   SidebarMenu,
+  SidebarMenuAction,
   SidebarMenuButton,
   SidebarMenuItem,
   SidebarRail,
@@ -28,6 +30,24 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Separator } from '@/components/ui/separator';
 import {
@@ -41,6 +61,10 @@ import {
   Settings,
   Layers,
   Share2,
+  MoreHorizontal,
+  Pencil,
+  Trash2,
+  Star,
 } from 'lucide-react';
 
 interface WorkspaceMember {
@@ -78,6 +102,9 @@ export function AppSidebar() {
   const [activeWorkspace, setActiveWorkspace] = useState<Workspace | null>(null);
   const [boards, setBoards] = useState<Board[]>([]);
   const [shareOpen, setShareOpen] = useState(false);
+  const [renamingBoard, setRenamingBoard] = useState<Board | null>(null);
+  const [renameValue, setRenameValue] = useState('');
+  const [deletingBoard, setDeletingBoard] = useState<Board | null>(null);
 
   const loadWorkspaces = useCallback(async () => {
     try {
@@ -108,6 +135,32 @@ export function AppSidebar() {
   useEffect(() => {
     if (activeWorkspace) { loadBoards(); }
   }, [activeWorkspace, loadBoards]);
+
+  const handleRenameBoard = async () => {
+    if (!renamingBoard || !renameValue.trim()) return;
+    try {
+      await apiClient.updateBoard(renamingBoard.id, { name: renameValue });
+      setRenamingBoard(null);
+      loadBoards();
+    } catch (error) {
+      console.error('Failed to rename board:', error);
+    }
+  };
+
+  const handleDeleteBoard = async () => {
+    if (!deletingBoard) return;
+    try {
+      await apiClient.deleteBoard(deletingBoard.id);
+      setDeletingBoard(null);
+      // If the deleted board is currently open, navigate to workspace
+      if (pathname.startsWith(`/board/${deletingBoard.id}`)) {
+        router.push(activeWorkspace ? `/workspace/${activeWorkspace.id}` : '/dashboard');
+      }
+      loadBoards();
+    } catch (error) {
+      console.error('Failed to delete board:', error);
+    }
+  };
 
   const isActive = (path: string) => pathname === path;
   const isActivePrefix = (prefix: string) => pathname.startsWith(prefix);
@@ -237,6 +290,35 @@ export function AppSidebar() {
                       <span>{board.name}</span>
                     </Link>
                   </SidebarMenuButton>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <SidebarMenuAction showOnHover>
+                        <MoreHorizontal />
+                        <span className="sr-only">More</span>
+                      </SidebarMenuAction>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent side="right" align="start" className="w-40">
+                      <DropdownMenuItem onClick={() => {
+                        setRenamingBoard(board);
+                        setRenameValue(board.name);
+                      }}>
+                        <Pencil className="mr-2 size-3.5" />
+                        Rename
+                      </DropdownMenuItem>
+                      <DropdownMenuItem>
+                        <Star className="mr-2 size-3.5" />
+                        Star
+                      </DropdownMenuItem>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem
+                        onClick={() => setDeletingBoard(board)}
+                        className="text-destructive focus:text-destructive"
+                      >
+                        <Trash2 className="mr-2 size-3.5" />
+                        Delete
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
                 </SidebarMenuItem>
               ))}
 
@@ -344,6 +426,50 @@ export function AppSidebar() {
           isOwner={activeWorkspace.ownerId === user?.id}
         />
       )}
+
+      {/* Rename Board Dialog */}
+      <Dialog open={!!renamingBoard} onOpenChange={(open) => !open && setRenamingBoard(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Rename Board</DialogTitle>
+          </DialogHeader>
+          <form onSubmit={(e) => { e.preventDefault(); handleRenameBoard(); }}>
+            <div className="py-4">
+              <Input
+                value={renameValue}
+                onChange={(e) => setRenameValue(e.target.value)}
+                placeholder="Board name"
+                autoFocus
+              />
+            </div>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setRenamingBoard(null)}>Cancel</Button>
+              <Button type="submit">Save</Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Board Confirmation */}
+      <AlertDialog open={!!deletingBoard} onOpenChange={(open) => !open && setDeletingBoard(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Board</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete &quot;{deletingBoard?.name}&quot;? All columns and tasks will be permanently removed.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDeleteBoard}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </Sidebar>
   );
 }

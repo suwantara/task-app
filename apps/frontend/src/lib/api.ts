@@ -109,6 +109,19 @@ class ApiClient {
     return this.request<Board>(`/boards/${id}`);
   }
 
+  async updateBoard(id: string, data: { name?: string; description?: string }) {
+    return this.request<Board>(`/boards/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async deleteBoard(id: string) {
+    return this.request<void>(`/boards/${id}`, {
+      method: 'DELETE',
+    });
+  }
+
   // Column endpoints
   async getColumns(boardId: string) {
     return this.request<Column[]>(`/columns?boardId=${boardId}`);

@@ -34,6 +34,7 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [newWorkspaceName, setNewWorkspaceName] = useState('');
+  const [creating, setCreating] = useState(false);
 
   useEffect(() => {
     if (!authLoading && !user) {
@@ -60,7 +61,8 @@ export default function DashboardPage() {
 
   const handleCreateWorkspace = async (e: React.BaseSyntheticEvent) => {
     e.preventDefault();
-    if (!newWorkspaceName.trim()) return;
+    if (!newWorkspaceName.trim() || creating) return;
+    setCreating(true);
 
     try {
       await apiClient.createWorkspace(newWorkspaceName);
@@ -69,6 +71,8 @@ export default function DashboardPage() {
       loadWorkspaces();
     } catch (error) {
       console.error('Failed to create workspace:', error);
+    } finally {
+      setCreating(false);
     }
   };
 
@@ -147,7 +151,7 @@ export default function DashboardPage() {
               >
                 Cancel
               </Button>
-              <Button type="submit">Create</Button>
+              <Button type="submit" disabled={creating}>Create</Button>
             </DialogFooter>
           </form>
         </DialogContent>

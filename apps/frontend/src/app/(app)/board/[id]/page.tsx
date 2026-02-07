@@ -15,7 +15,6 @@ import { Skeleton } from '@/components/ui/skeleton';
 import {
   Tooltip,
   TooltipContent,
-  TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip';
 import {
@@ -193,10 +192,11 @@ export default function BoardPage() {
     e.preventDefault();
     if (!newColumnName.trim()) return;
 
+    const name = newColumnName;
+    setNewColumnName('');
+    setAddingColumn(false);
     try {
-      await apiClient.createColumn(boardId, newColumnName, columns.length);
-      setNewColumnName('');
-      setAddingColumn(false);
+      await apiClient.createColumn(boardId, name, columns.length);
       loadBoardData();
     } catch (error) {
       console.error('Failed to create column:', error);
@@ -206,17 +206,18 @@ export default function BoardPage() {
   const handleCreateTask = async (columnId: string) => {
     if (!newCardTitle.trim() || !board) return;
 
+    const title = newCardTitle;
+    setNewCardTitle('');
+    setAddingCardColumnId(null);
     const columnTasks = tasks.filter((t) => t.columnId === columnId);
     try {
       await apiClient.createTask({
         workspaceId: board.workspaceId,
         boardId,
         columnId,
-        title: newCardTitle,
+        title,
         position: columnTasks.length,
       });
-      setNewCardTitle('');
-      setAddingCardColumnId(null);
       loadBoardData();
     } catch (error) {
       console.error('Failed to create task:', error);
@@ -327,8 +328,7 @@ export default function BoardPage() {
   }
 
   return (
-    <TooltipProvider delayDuration={200}>
-      <div className="flex h-[calc(100vh-3rem)] flex-col">
+    <div className="flex h-[calc(100vh-3rem)] flex-col">
         {/* Board Header */}
         <div className="flex items-center justify-between border-b px-6 py-3">
           <div className="flex items-center gap-3">
@@ -373,7 +373,7 @@ export default function BoardPage() {
               <section
                 key={column.id}
                 aria-label={`Column: ${column.name}`}
-                className={`flex w-68 shrink-0 flex-col rounded-xl bg-muted/50 ${
+                className={`flex w-68 shrink-0 flex-col rounded-xl bg-muted/50 transition-shadow duration-100 ${
                   dragOverColumn === column.id
                     ? 'ring-2 ring-primary/50'
                     : ''
@@ -400,8 +400,8 @@ export default function BoardPage() {
                         key={task.id}
                         draggable
                         onDragStart={() => handleDragStart(task)}
-                        className={`group relative cursor-grab rounded-lg border bg-card p-3 shadow-sm transition-all hover:shadow-md hover:border-primary/30 active:cursor-grabbing active:opacity-70 active:rotate-1 active:scale-105 ${
-                          draggedTask?.id === task.id ? 'opacity-50' : ''
+                        className={`group relative cursor-grab rounded-lg border bg-card p-3 shadow-sm transition-shadow duration-150 hover:shadow-md hover:border-primary/30 active:cursor-grabbing ${
+                          draggedTask?.id === task.id ? 'opacity-40' : ''
                         }`}
                       >
                         {/* Priority bar */}
@@ -627,6 +627,7 @@ export default function BoardPage() {
           </DialogContent>
         </Dialog>
       </div>
-    </TooltipProvider>
+    </Dialog>
+    </div>
   );
 }
