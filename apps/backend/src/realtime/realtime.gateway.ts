@@ -148,4 +148,36 @@ export class RealtimeGateway
       name: data.name,
     });
   }
+
+  @SubscribeMessage('note:content-update')
+  handleNoteContentUpdate(
+    @MessageBody()
+    data: {
+      room: string;
+      noteId: string;
+      title: string;
+      content: string;
+      userId: string;
+    },
+    @ConnectedSocket() client: Socket,
+  ) {
+    client.to(data.room).emit('note:content-changed', {
+      noteId: data.noteId,
+      title: data.title,
+      content: data.content,
+      userId: data.userId,
+    });
+  }
+
+  @SubscribeMessage('note:stop-editing')
+  handleNoteStopEditing(
+    @MessageBody()
+    data: { room: string; noteId: string; userId: string },
+    @ConnectedSocket() client: Socket,
+  ) {
+    client.to(data.room).emit('note:someone-stopped-editing', {
+      noteId: data.noteId,
+      userId: data.userId,
+    });
+  }
 }

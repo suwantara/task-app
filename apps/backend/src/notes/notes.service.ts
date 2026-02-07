@@ -6,10 +6,14 @@ import {
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateNoteDto } from './dto/create-note.dto';
 import { UpdateNoteDto } from './dto/update-note.dto';
+import { RealtimeService } from '../realtime/realtime.service';
 
 @Injectable()
 export class NotesService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private realtime: RealtimeService,
+  ) {}
 
   async create(userId: string, createNoteDto: CreateNoteDto) {
     // Verify workspace access
@@ -104,6 +108,9 @@ export class NotesService {
     return this.prisma.note.update({
       where: { id },
       data: updateNoteDto,
+    }).then((updated) => {
+      this.realtime.emitNoteUpdated(note.workspaceId, updated);
+      return updated;
     });
   }
 
