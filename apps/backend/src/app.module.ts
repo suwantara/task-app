@@ -11,6 +11,7 @@ import { ColumnsModule } from './columns/columns.module';
 import { TasksModule } from './tasks/tasks.module';
 import { RealtimeModule } from './realtime/realtime.module';
 import { NotesModule } from './notes/notes.module';
+import { CacheModule } from './cache/cache.module';
 
 import { CommonModule } from './common/common.module';
 
@@ -18,6 +19,7 @@ import { CommonModule } from './common/common.module';
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
     PrismaModule,
+    CacheModule,
     CommonModule,
     AuthModule,
     UsersModule,
@@ -32,3 +34,4 @@ import { CommonModule } from './common/common.module';
   providers: [AppService],
 })
 export class AppModule {}
+

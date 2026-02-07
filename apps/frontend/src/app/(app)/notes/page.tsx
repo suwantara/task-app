@@ -572,7 +572,7 @@ export default function NotesPage() {
 
             {/* Rich Text Editor */}
             <div className="flex-1 overflow-hidden">
-              {ydoc ? (
+              {ydoc && yjsSynced ? (
                 <SimpleEditor
                   key={`editor-yjs-${selectedNote?.id}-${editorVersion}`}
                   content={editingContent}

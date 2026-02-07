@@ -4,12 +4,21 @@ import {
   ForbiddenException,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { CacheService } from '../cache/cache.service';
 import { CreateBoardDto } from './dto/create-board.dto';
 import { UpdateBoardDto } from './dto/update-board.dto';
 
 @Injectable()
 export class BoardsService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly cache: CacheService,
+  ) {}
+
+  private readonly getCacheKey = {
+    boardsList: (workspaceId: string) => `boards:workspace:${workspaceId}`,
+    board: (id: string) => `board:${id}`,
+  };
 
   async create(userId: string, createBoardDto: CreateBoardDto) {
     // Verify user is member of workspace
@@ -45,6 +54,12 @@ export class BoardsService {
         columns: true,
       },
     });
+
+    // Invalidate boards list cache
+    await this.cache.del(
+      this.getCacheKey.boardsList(createBoardDto.workspaceId),
+    );
+
     return board;
   }
 
@@ -63,18 +78,34 @@ export class BoardsService {
       throw new ForbiddenException('You are not a member of this workspace');
     }
 
-    return this.prisma.board.findMany({
-      where: { workspaceId },
-      include: {
-        _count: {
-          select: { tasks: true },
+    // Try cache first
+    const cacheKey = this.getCacheKey.boardsList(workspaceId);
+    return this.cache.getOrSet(cacheKey, async () => {
+      return this.prisma.board.findMany({
+        where: { workspaceId },
+        include: {
+          _count: {
+            select: { tasks: true },
+          },
         },
-      },
-      orderBy: { createdAt: 'desc' },
+        orderBy: { createdAt: 'desc' },
+      });
     });
   }
 
   async findOne(id: string, userId: string) {
+    // Try cache first
+    const cacheKey = this.getCacheKey.board(id);
+    const cached = await this.cache.get(cacheKey);
+    if (cached) {
+      // Verify access on cached data
+      const board = cached as {
+        workspace: { members: { userId: string }[] };
+      };
+      const isMember = board.workspace.members.some((m) => m.userId === userId);
+      if (isMember) return cached;
+    }
+
     const board = await this.prisma.board.findUnique({
       where: { id },
       include: {
@@ -110,12 +141,13 @@ export class BoardsService {
       throw new ForbiddenException('You do not have access to this board');
     }
 
+    // Cache the result (shorter TTL for detailed data)
+    await this.cache.set(cacheKey, board, 120);
+
     return board;
   }
 
   async update(id: string, userId: string, updateBoardDto: UpdateBoardDto) {
-    // Basic check - anyone in workspace can update? Or just owner/creator?
-    // For MVP, enable workspace members to update.
     const board = await this.prisma.board.findUnique({
       where: { id },
       include: { workspace: { include: { members: true } } },
@@ -126,10 +158,18 @@ export class BoardsService {
     const isMember = board.workspace.members.some((m) => m.userId === userId);
     if (!isMember) throw new ForbiddenException('Access denied');
 
-    return this.prisma.board.update({
+    const updated = await this.prisma.board.update({
       where: { id },
       data: { name: updateBoardDto.name },
     });
+
+    // Invalidate caches
+    await Promise.all([
+      this.cache.del(this.getCacheKey.board(id)),
+      this.cache.del(this.getCacheKey.boardsList(board.workspaceId)),
+    ]);
+
+    return updated;
   }
 
   async remove(id: string, userId: string) {
@@ -150,8 +190,16 @@ export class BoardsService {
       );
     }
 
-    return this.prisma.board.delete({
+    const deleted = await this.prisma.board.delete({
       where: { id },
     });
+
+    // Invalidate caches
+    await Promise.all([
+      this.cache.del(this.getCacheKey.board(id)),
+      this.cache.del(this.getCacheKey.boardsList(board.workspaceId)),
+    ]);
+
+    return deleted;
   }
 }

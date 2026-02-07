@@ -4,6 +4,7 @@ import {
   ForbiddenException,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { CacheService } from '../cache/cache.service';
 import { CreateNoteDto } from './dto/create-note.dto';
 import { UpdateNoteDto } from './dto/update-note.dto';
 import { RealtimeService } from '../realtime/realtime.service';
@@ -11,9 +12,15 @@ import { RealtimeService } from '../realtime/realtime.service';
 @Injectable()
 export class NotesService {
   constructor(
-    private prisma: PrismaService,
-    private realtime: RealtimeService,
+    private readonly prisma: PrismaService,
+    private readonly cache: CacheService,
+    private readonly realtime: RealtimeService,
   ) {}
+
+  private readonly getCacheKey = {
+    notesList: (workspaceId: string) => `notes:workspace:${workspaceId}`,
+    note: (id: string) => `note:${id}`,
+  };
 
   async create(userId: string, createNoteDto: CreateNoteDto) {
     // Verify workspace access
@@ -30,7 +37,7 @@ export class NotesService {
       throw new ForbiddenException('You are not a member of this workspace');
     }
 
-    return this.prisma.note.create({
+    const note = await this.prisma.note.create({
       data: {
         title: createNoteDto.title,
         content: createNoteDto.content || '',
@@ -45,6 +52,11 @@ export class NotesService {
         },
       },
     });
+
+    // Invalidate notes list cache
+    await this.cache.del(this.getCacheKey.notesList(createNoteDto.workspaceId));
+
+    return note;
   }
 
   async findAll(userId: string, workspaceId: string) {
@@ -62,18 +74,33 @@ export class NotesService {
       throw new ForbiddenException('You are not a member of this workspace');
     }
 
-    return this.prisma.note.findMany({
-      where: { workspaceId },
-      orderBy: { updatedAt: 'desc' },
-      include: {
-        creator: {
-          select: { id: true, name: true, avatarUrl: true },
+    // Try cache first
+    const cacheKey = this.getCacheKey.notesList(workspaceId);
+    return this.cache.getOrSet(cacheKey, async () => {
+      return this.prisma.note.findMany({
+        where: { workspaceId },
+        orderBy: { updatedAt: 'desc' },
+        include: {
+          creator: {
+            select: { id: true, name: true, avatarUrl: true },
+          },
         },
-      },
+      });
     });
   }
 
   async findOne(id: string, userId: string) {
+    // Try cache first
+    const cacheKey = this.getCacheKey.note(id);
+    const cached = await this.cache.get(cacheKey);
+    if (cached) {
+      const note = cached as {
+        workspace: { members: { userId: string }[] };
+      };
+      const isMember = note.workspace.members.some((m) => m.userId === userId);
+      if (isMember) return cached;
+    }
+
     const note = await this.prisma.note.findUnique({
       where: { id },
       include: {
@@ -91,6 +118,9 @@ export class NotesService {
     const isMember = note.workspace.members.some((m) => m.userId === userId);
     if (!isMember) throw new ForbiddenException('Access denied');
 
+    // Cache the result
+    await this.cache.set(cacheKey, note, 120);
+
     return note;
   }
 
@@ -105,13 +135,19 @@ export class NotesService {
     const isMember = note.workspace.members.some((m) => m.userId === userId);
     if (!isMember) throw new ForbiddenException('Access denied');
 
-    return this.prisma.note.update({
+    const updated = await this.prisma.note.update({
       where: { id },
       data: updateNoteDto,
-    }).then((updated) => {
-      this.realtime.emitNoteUpdated(note.workspaceId, updated);
-      return updated;
     });
+
+    // Invalidate caches
+    await Promise.all([
+      this.cache.del(this.getCacheKey.note(id)),
+      this.cache.del(this.getCacheKey.notesList(note.workspaceId)),
+    ]);
+
+    this.realtime.emitNoteUpdated(note.workspaceId, updated);
+    return updated;
   }
 
   async remove(id: string, userId: string) {
@@ -122,12 +158,19 @@ export class NotesService {
 
     if (!note) throw new NotFoundException('Note not found');
 
-    // Only creator or workspace owner can delete? For MVP, let's say any member can delete (like Notion teamspace)
     const isMember = note.workspace.members.some((m) => m.userId === userId);
     if (!isMember) throw new ForbiddenException('Access denied');
 
-    return this.prisma.note.delete({
+    const deleted = await this.prisma.note.delete({
       where: { id },
     });
+
+    // Invalidate caches
+    await Promise.all([
+      this.cache.del(this.getCacheKey.note(id)),
+      this.cache.del(this.getCacheKey.notesList(note.workspaceId)),
+    ]);
+
+    return deleted;
   }
 }

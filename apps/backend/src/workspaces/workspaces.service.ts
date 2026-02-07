@@ -5,6 +5,7 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { CacheService } from '../cache/cache.service';
 import { CreateWorkspaceDto } from './dto/create-workspace.dto';
 import { UpdateWorkspaceDto } from './dto/update-workspace.dto';
 import {
@@ -15,7 +16,16 @@ import { randomBytes } from 'node:crypto';
 
 @Injectable()
 export class WorkspacesService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly cache: CacheService,
+  ) {}
+
+  private readonly getCacheKey = {
+    workspacesList: (userId: string) => `workspaces:user:${userId}`,
+    workspace: (id: string) => `workspace:${id}`,
+    members: (workspaceId: string) => `workspace:${workspaceId}:members`,
+  };
 
   async create(userId: string, createWorkspaceDto: CreateWorkspaceDto) {
     const workspace = await this.prisma.workspace.create({
@@ -30,46 +40,65 @@ export class WorkspacesService {
         },
       },
     });
+
+    // Invalidate user's workspaces list cache
+    await this.cache.del(this.getCacheKey.workspacesList(userId));
+
     return workspace;
   }
 
   async findAll(userId: string) {
-    return this.prisma.workspace.findMany({
-      where: {
-        members: {
-          some: {
-            userId: userId,
-          },
-        },
-      },
-      include: {
-        owner: {
-          select: {
-            id: true,
-            name: true,
-            email: true,
-          },
-        },
-        members: {
-          include: {
-            user: {
-              select: {
-                id: true,
-                name: true,
-                email: true,
-                avatarUrl: true,
-              },
+    const cacheKey = this.getCacheKey.workspacesList(userId);
+    return this.cache.getOrSet(cacheKey, async () => {
+      return this.prisma.workspace.findMany({
+        where: {
+          members: {
+            some: {
+              userId: userId,
             },
           },
         },
-        _count: {
-          select: { members: true },
+        include: {
+          owner: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+            },
+          },
+          members: {
+            include: {
+              user: {
+                select: {
+                  id: true,
+                  name: true,
+                  email: true,
+                  avatarUrl: true,
+                },
+              },
+            },
+          },
+          _count: {
+            select: { members: true },
+          },
         },
-      },
+      });
     });
   }
 
   async findOne(id: string, userId: string) {
+    const cacheKey = this.getCacheKey.workspace(id);
+    const cached = await this.cache.get(cacheKey);
+    if (cached) {
+      const workspace = cached as {
+        members: { userId: string }[];
+      };
+      const isMember = workspace.members.some(
+        (member) => member.userId === userId,
+      );
+      if (isMember) return cached;
+    }
+
     const workspace = await this.prisma.workspace.findUnique({
       where: { id },
       include: {
@@ -100,6 +129,7 @@ export class WorkspacesService {
       throw new ForbiddenException('You are not a member of this workspace');
     }
 
+    await this.cache.set(cacheKey, workspace, 180);
     return workspace;
   }
 
@@ -115,10 +145,18 @@ export class WorkspacesService {
       throw new ForbiddenException('Only the owner can update the workspace');
     }
 
-    return this.prisma.workspace.update({
+    const updated = await this.prisma.workspace.update({
       where: { id },
       data: updateWorkspaceDto,
     });
+
+    // Invalidate caches
+    await Promise.all([
+      this.cache.del(this.getCacheKey.workspace(id)),
+      this.cache.delPattern('workspaces:user:*'),
+    ]);
+
+    return updated;
   }
 
   async remove(id: string, userId: string) {
@@ -129,9 +167,17 @@ export class WorkspacesService {
       throw new ForbiddenException('Only the owner can delete the workspace');
     }
 
-    return this.prisma.workspace.delete({
+    const deleted = await this.prisma.workspace.delete({
       where: { id },
     });
+
+    // Invalidate caches
+    await Promise.all([
+      this.cache.del(this.getCacheKey.workspace(id)),
+      this.cache.delPattern('workspaces:user:*'),
+    ]);
+
+    return deleted;
   }
 
   // ============================================
@@ -245,6 +291,13 @@ export class WorkspacesService {
       }),
     ]);
 
+    // Invalidate caches
+    await Promise.all([
+      this.cache.del(this.getCacheKey.workspace(link.workspaceId)),
+      this.cache.del(this.getCacheKey.members(link.workspaceId)),
+      this.cache.del(this.getCacheKey.workspacesList(userId)),
+    ]);
+
     return { workspace: member.workspace, alreadyMember: false };
   }
 
@@ -284,22 +337,22 @@ export class WorkspacesService {
   async getMembers(workspaceId: string, userId: string) {
     await this.assertMemberAccess(workspaceId, userId);
 
-    return this.prisma.workspaceMember.findMany({
-      where: { workspaceId },
-      include: {
-        user: {
-          select: {
-            id: true,
-            name: true,
-            email: true,
-            avatarUrl: true,
+    const cacheKey = this.getCacheKey.members(workspaceId);
+    return this.cache.getOrSet(cacheKey, async () => {
+      return this.prisma.workspaceMember.findMany({
+        where: { workspaceId },
+        include: {
+          user: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+              avatarUrl: true,
+            },
           },
         },
-      },
-      orderBy: [
-        { role: 'asc' },
-        { joinedAt: 'asc' },
-      ],
+        orderBy: [{ role: 'asc' }, { joinedAt: 'asc' }],
+      });
     });
   }
 
@@ -325,7 +378,7 @@ export class WorkspacesService {
       throw new ForbiddenException('Cannot change the owner role');
     }
 
-    return this.prisma.workspaceMember.update({
+    const updated = await this.prisma.workspaceMember.update({
       where: { id: memberId },
       data: { role: dto.role },
       include: {
@@ -339,6 +392,11 @@ export class WorkspacesService {
         },
       },
     });
+
+    // Invalidate members cache
+    await this.cache.del(this.getCacheKey.members(workspaceId));
+
+    return updated;
   }
 
   async removeMember(workspaceId: string, memberId: string, userId: string) {
@@ -357,12 +415,23 @@ export class WorkspacesService {
       throw new ForbiddenException('Cannot remove the workspace owner');
     }
     if (workspace.ownerId !== userId && member.userId !== userId) {
-      throw new ForbiddenException('You can only remove yourself or must be the owner');
+      throw new ForbiddenException(
+        'You can only remove yourself or must be the owner',
+      );
     }
 
-    return this.prisma.workspaceMember.delete({
+    const deleted = await this.prisma.workspaceMember.delete({
       where: { id: memberId },
     });
+
+    // Invalidate caches
+    await Promise.all([
+      this.cache.del(this.getCacheKey.members(workspaceId)),
+      this.cache.del(this.getCacheKey.workspace(workspaceId)),
+      this.cache.del(this.getCacheKey.workspacesList(member.userId)),
+    ]);
+
+    return deleted;
   }
 
   // ============================================
