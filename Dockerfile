@@ -21,17 +21,21 @@ WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY --from=shared /app/packages/shared-types ./packages/shared-types
 COPY apps/backend ./apps/backend
-RUN cd apps/backend && npx prisma generate && npm run build
+WORKDIR /app/apps/backend
+RUN npx prisma generate && npm run build
 
 # Production image
 FROM base AS runner
-WORKDIR /app
+WORKDIR /app/apps/backend
 ENV NODE_ENV=production
 
-COPY --from=builder /app/node_modules ./node_modules
+# Copy entire backend with node_modules from builder
+COPY --from=builder /app/node_modules /app/node_modules
+COPY --from=builder /app/packages /app/packages
 COPY --from=builder /app/apps/backend/dist ./dist
 COPY --from=builder /app/apps/backend/package.json ./
 COPY --from=builder /app/apps/backend/prisma ./prisma
+COPY --from=builder /app/apps/backend/prisma.config.ts ./prisma.config.ts
 
 EXPOSE 3000
 CMD ["sh", "-c", "npx prisma migrate deploy && node dist/main"]
