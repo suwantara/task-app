@@ -84,10 +84,10 @@ export default function NotesPage() {
 
   // Yjs collaborative editing
   const { socket } = useSocket();
-  const ydocRef = useRef<Y.Doc | null>(null);
+  const [ydoc, setYdoc] = useState<Y.Doc | null>(null);
   const providerRef = useRef<SocketIOYjsProvider | null>(null);
   const [yjsSynced, setYjsSynced] = useState(false);
-  const [ydocReady, setYdocReady] = useState(false);
+  const [editorVersion, setEditorVersion] = useState(0);
 
   // Helper: get editors for a specific note
   const getEditorsForNote = useCallback((noteId: string) => {
@@ -188,10 +188,7 @@ export default function NotesPage() {
         providerRef.current.destroy();
         providerRef.current = null;
       }
-      if (ydocRef.current) {
-        ydocRef.current.destroy();
-        ydocRef.current = null;
-      }
+      // ydoc cleanup is handled by setYdoc in component unmount
     };
   }, []);
 
@@ -334,12 +331,15 @@ export default function NotesPage() {
       providerRef.current.destroy();
       providerRef.current = null;
     }
-    if (ydocRef.current) {
-      ydocRef.current.destroy();
-      ydocRef.current = null;
-    }
+    // Cleanup previous ydoc
+    setYdoc((prevYdoc) => {
+      if (prevYdoc) {
+        prevYdoc.destroy();
+      }
+      return null;
+    });
     setYjsSynced(false);
-    setYdocReady(false);
+    setEditorVersion((v) => v + 1);
 
     try {
       const fullNote = await apiClient.getNote(note.id);
@@ -356,21 +356,23 @@ export default function NotesPage() {
 
       // Initialize Yjs for collaborative editing
       if (socket && user) {
-        const ydoc = new Y.Doc();
-        ydocRef.current = ydoc;
+        const newYdoc = new Y.Doc();
 
         // Initialize content from server
-        const xmlFragment = ydoc.getXmlFragment('prosemirror');
+        const xmlFragment = newYdoc.getXmlFragment('prosemirror');
         if (contentStr && xmlFragment.length === 0) {
           // Content will be synced from server via provider
         }
 
-        const provider = new SocketIOYjsProvider(socket, fullNote.id, ydoc, {
+        const provider = new SocketIOYjsProvider(socket, fullNote.id, newYdoc, {
           user: { name: user.name || user.email, color: getUserColor(user.id) },
           onSynced: () => setYjsSynced(true),
         });
         providerRef.current = provider;
-        setYdocReady(true);
+        
+        // Set ydoc state AFTER everything is initialized
+        setYdoc(newYdoc);
+        setEditorVersion((v) => v + 1);
       }
     } catch (error) {
       console.error('Failed to load note:', error);
@@ -605,19 +607,19 @@ export default function NotesPage() {
 
             {/* Rich Text Editor */}
             <div className="flex-1 overflow-hidden">
-              {ydocReady && ydocRef.current ? (
+              {ydoc ? (
                 <SimpleEditor
-                  key={`editor-yjs-${selectedNote?.id}`}
+                  key={`editor-yjs-${selectedNote?.id}-${editorVersion}`}
                   content={editingContent}
                   onChange={handleContentChange}
                   placeholder="Start writing..."
-                  ydoc={ydocRef.current}
+                  ydoc={ydoc}
                   awareness={providerRef.current?.awareness}
                   user={user ? { name: user.name || user.email, color: providerRef.current?.userColor || '#888' } : undefined}
                 />
               ) : (
                 <SimpleEditor
-                  key={`editor-plain-${selectedNote?.id}`}
+                  key={`editor-plain-${selectedNote?.id}-${editorVersion}`}
                   content={editingContent}
                   onChange={handleContentChange}
                   placeholder="Start writing..."
