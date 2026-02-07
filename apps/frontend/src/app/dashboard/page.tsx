@@ -74,6 +74,12 @@ export default function DashboardPage() {
         <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-4 sm:px-6 lg:px-8">
           <h1 className="text-2xl font-bold text-gray-900">Task Management</h1>
           <div className="flex items-center gap-4">
+            <Link
+              href="/notes"
+              className="text-sm text-gray-600 hover:text-gray-900"
+            >
+              Notes
+            </Link>
             <span className="text-sm text-gray-600">{user?.name}</span>
             <button
               onClick={logout}
