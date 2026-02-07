@@ -673,6 +673,8 @@ export default function NotesPage() {
                   value={newNoteTitle}
                   onChange={(e) => setNewNoteTitle(e.target.value)}
                   autoFocus
+                  autoComplete="off"
+                  data-1p-ignore
                 />
               </div>
             </div>
@@ -712,6 +714,8 @@ export default function NotesPage() {
                   value={renameTitle}
                   onChange={(e) => setRenameTitle(e.target.value)}
                   autoFocus
+                  autoComplete="off"
+                  data-1p-ignore
                 />
               </div>
             </div>
