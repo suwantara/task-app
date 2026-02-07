@@ -43,7 +43,7 @@ export function WorkspaceMembers({
   members,
   maxVisible = 4,
   size = 'sm',
-}: WorkspaceMembersProps) {
+}: Readonly<WorkspaceMembersProps>) {
   if (!members || members.length === 0) return null;
 
   const visible = members.slice(0, maxVisible);
@@ -61,16 +61,16 @@ export function WorkspaceMembers({
                 className={`${sizeClass} ring-2 ring-background ${roleColors[member.role] || ''} cursor-default`}
               >
                 <AvatarFallback className={`${textClass} bg-muted`}>
-                  {member.user.name.charAt(0).toUpperCase()}
+                  {(member.user?.name ?? '?').charAt(0).toUpperCase()}
                 </AvatarFallback>
               </Avatar>
             </TooltipTrigger>
             <TooltipContent side="bottom" className="text-xs">
               <div className="flex items-center gap-1">
                 {roleIcons[member.role]}
-                <span className="font-medium">{member.user.name}</span>
+                <span className="font-medium">{member.user?.name ?? 'Unknown'}</span>
                 <span className="text-muted-foreground">
-                  ({member.role.charAt(0) + member.role.slice(1).toLowerCase()})
+                  ({(member.role ?? 'VIEWER').charAt(0) + (member.role ?? 'VIEWER').slice(1).toLowerCase()})
                 </span>
               </div>
             </TooltipContent>
@@ -87,7 +87,7 @@ export function WorkspaceMembers({
               </Avatar>
             </TooltipTrigger>
             <TooltipContent side="bottom" className="text-xs">
-              {members.slice(maxVisible).map((m) => m.user.name).join(', ')}
+              {members.slice(maxVisible).map((m) => m.user?.name ?? 'Unknown').join(', ')}
             </TooltipContent>
           </Tooltip>
         )}

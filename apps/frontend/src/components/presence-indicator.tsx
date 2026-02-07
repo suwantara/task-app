@@ -46,7 +46,7 @@ export function PresenceIndicator() {
               {onlineUsers.slice(0, 5).map((u) => (
                 <Avatar key={u.userId} className="h-6 w-6 border-2 border-background">
                   <AvatarFallback className="text-[10px]">
-                    {u.name.charAt(0).toUpperCase()}
+                    {(u.name ?? '?').charAt(0).toUpperCase()}
                   </AvatarFallback>
                 </Avatar>
               ))}
@@ -66,7 +66,7 @@ export function PresenceIndicator() {
                   <div>
                     <span className="font-medium">{page}:</span>{' '}
                     <span className="text-muted-foreground">
-                      {users.map((u) => u.name.split('@')[0]).join(', ')}
+                      {users.map((u) => (u.name ?? 'Unknown').split('@')[0]).join(', ')}
                     </span>
                   </div>
                 </div>

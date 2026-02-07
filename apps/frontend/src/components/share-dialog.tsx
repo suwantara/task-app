@@ -75,7 +75,7 @@ export function ShareDialog({
   workspaceName,
   currentUserId,
   isOwner,
-}: ShareDialogProps) {
+}: Readonly<ShareDialogProps>) {
   const [members, setMembers] = useState<Member[]>([]);
   const [inviteLinks, setInviteLinks] = useState<InviteLink[]>([]);
   const [loading, setLoading] = useState(false);
@@ -119,7 +119,7 @@ export function ShareDialog({
   };
 
   const handleCopyLink = async (token: string, linkId: string) => {
-    const url = `${window.location.origin}/join/${token}`;
+    const url = `${globalThis.location.origin}/join/${token}`;
     await navigator.clipboard.writeText(url);
     setCopiedId(linkId);
     setTimeout(() => setCopiedId(null), 2000);
@@ -178,6 +178,51 @@ export function ShareDialog({
     }
   };
 
+  const renderMemberRoleBadge = (member: Member) => {
+    if (member.role === 'OWNER') {
+      return (
+        <Badge variant="default" className="gap-1">
+          <Crown className="size-3" />
+          Owner
+        </Badge>
+      );
+    }
+
+    if (isOwner && member.userId !== currentUserId) {
+      return (
+        <div className="flex items-center gap-1">
+          <Select
+            value={member.role}
+            onValueChange={(val) => handleUpdateRole(member.id, val)}
+          >
+            <SelectTrigger className="h-7 w-24 text-xs">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="EDITOR">Editor</SelectItem>
+              <SelectItem value="VIEWER">Viewer</SelectItem>
+            </SelectContent>
+          </Select>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="size-7 text-destructive hover:text-destructive"
+            onClick={() => handleRemoveMember(member.id)}
+          >
+            <UserMinus className="size-3.5" />
+          </Button>
+        </div>
+      );
+    }
+
+    return (
+      <Badge variant={getRoleBadgeVariant(member.role)} className="gap-1">
+        {getRoleIcon(member.role)}
+        {(member.role ?? 'VIEWER').charAt(0) + (member.role ?? 'VIEWER').slice(1).toLowerCase()}
+      </Badge>
+    );
+  };
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-lg">
@@ -213,55 +258,22 @@ export function ShareDialog({
                   >
                     <Avatar className="size-8">
                       <AvatarFallback className="text-xs">
-                        {member.user.name.charAt(0).toUpperCase()}
+                        {(member.user?.name ?? '?').charAt(0).toUpperCase()}
                       </AvatarFallback>
                     </Avatar>
                     <div className="min-w-0 flex-1">
                       <p className="truncate text-sm font-medium">
-                        {member.user.name}
+                        {member.user?.name ?? 'Unknown'}
                         {member.userId === currentUserId && (
                           <span className="ml-1 text-xs text-muted-foreground">(you)</span>
                         )}
                       </p>
                       <p className="truncate text-xs text-muted-foreground">
-                        {member.user.email}
+                        {member.user?.email ?? ''}
                       </p>
                     </div>
 
-                    {member.role === 'OWNER' ? (
-                      <Badge variant="default" className="gap-1">
-                        <Crown className="size-3" />
-                        Owner
-                      </Badge>
-                    ) : isOwner && member.userId !== currentUserId ? (
-                      <div className="flex items-center gap-1">
-                        <Select
-                          value={member.role}
-                          onValueChange={(val) => handleUpdateRole(member.id, val)}
-                        >
-                          <SelectTrigger className="h-7 w-24 text-xs">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="EDITOR">Editor</SelectItem>
-                            <SelectItem value="VIEWER">Viewer</SelectItem>
-                          </SelectContent>
-                        </Select>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="size-7 text-destructive hover:text-destructive"
-                          onClick={() => handleRemoveMember(member.id)}
-                        >
-                          <UserMinus className="size-3.5" />
-                        </Button>
-                      </div>
-                    ) : (
-                      <Badge variant={getRoleBadgeVariant(member.role)} className="gap-1">
-                        {getRoleIcon(member.role)}
-                        {member.role.charAt(0) + member.role.slice(1).toLowerCase()}
-                      </Badge>
-                    )}
+                    {renderMemberRoleBadge(member)}
                   </div>
                 ))}
               </div>
@@ -309,7 +321,7 @@ export function ShareDialog({
                   <div
                     key={link.id}
                     className={`flex items-center gap-2 rounded-lg border p-2.5 ${
-                      !link.isActive ? 'opacity-50' : ''
+                      link.isActive ? '' : 'opacity-50'
                     }`}
                   >
                     <div className="min-w-0 flex-1">
@@ -327,13 +339,13 @@ export function ShareDialog({
                           </Badge>
                         )}
                         <span className="text-[10px] text-muted-foreground">
-                          {link.useCount} use{link.useCount !== 1 ? 's' : ''}
+                          {link.useCount} use{link.useCount === 1 ? '' : 's'}
                           {link.maxUses ? ` / ${link.maxUses}` : ''}
                         </span>
                       </div>
                       <Input
                         readOnly
-                        value={`${typeof window !== 'undefined' ? window.location.origin : ''}/join/${link.token}`}
+                        value={`${typeof globalThis !== 'undefined' && globalThis.location ? globalThis.location.origin : ''}/join/${link.token}`}
                         className="mt-1.5 h-7 text-xs"
                       />
                     </div>

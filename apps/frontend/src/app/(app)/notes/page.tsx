@@ -554,7 +554,7 @@ export default function NotesPage() {
                     {editors.map((eu) => (
                       <Avatar key={eu.userId} className="size-5 border-2 border-blue-50 dark:border-blue-950">
                         <AvatarFallback className="bg-blue-500 text-[10px] text-white">
-                          {eu.name.charAt(0).toUpperCase()}
+                          {(eu.name ?? '?').charAt(0).toUpperCase()}
                         </AvatarFallback>
                       </Avatar>
                     ))}
@@ -562,7 +562,7 @@ export default function NotesPage() {
                   <div className="flex items-center gap-1.5">
                     <Pencil className="size-3 animate-pulse text-blue-500" />
                     <span className="text-xs text-blue-600 dark:text-blue-400">
-                      {editors.map((eu) => eu.name.split('@')[0]).join(', ')}{' '}
+                      {editors.map((eu) => (eu.name ?? 'Unknown').split('@')[0]).join(', ')}{' '}
                       {editors.length === 1 ? 'is' : 'are'} editing...
                     </span>
                   </div>
