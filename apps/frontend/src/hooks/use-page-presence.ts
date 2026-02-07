@@ -27,10 +27,11 @@ function getPageName(pathname: string | null): string {
   const mainPage = segments[0];
   
   // Handle app routes that start with (app)
-  if (mainPage.startsWith('(')) {
+  if (mainPage?.startsWith('(')) {
     return pageMap[segments[1]] || segments[1] || 'App';
   }
   
+  if (!mainPage) return 'Dashboard';
   return pageMap[mainPage] || mainPage.charAt(0).toUpperCase() + mainPage.slice(1);
 }
 
