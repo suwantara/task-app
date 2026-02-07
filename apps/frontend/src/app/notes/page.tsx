@@ -113,13 +113,14 @@ export default function NotesPage() {
     try {
       const fullNote = await apiClient.getNote(note.id);
       setSelectedNote(fullNote);
-      setEditingContent(
-        typeof fullNote.content === 'string'
-          ? fullNote.content
-          : fullNote.content
-          ? JSON.stringify(fullNote.content, null, 2)
-          : ''
-      );
+      // Convert content to string for editing
+      let contentStr = '';
+      if (fullNote.content) {
+        contentStr = typeof fullNote.content === 'string' 
+          ? fullNote.content 
+          : JSON.stringify(fullNote.content, null, 2);
+      }
+      setEditingContent(contentStr);
     } catch (error) {
       console.error('Failed to load note:', error);
     }
