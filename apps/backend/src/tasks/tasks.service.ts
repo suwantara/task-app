@@ -57,8 +57,11 @@ export class TasksService {
       },
     });
 
-    // Invalidate board cache (contains tasks via columns)
-    await this.cache.del(`board:${boardId}`);
+    // Invalidate caches
+    await Promise.all([
+      this.cache.del(this.getCacheKey.tasksList(boardId)),
+      this.cache.del(`board:${boardId}`),
+    ]);
 
     this.realtime.emitTaskCreated(boardId, task);
     return task;
@@ -128,6 +131,7 @@ export class TasksService {
     // Invalidate caches
     await Promise.all([
       this.cache.del(this.getCacheKey.task(id)),
+      this.cache.del(this.getCacheKey.tasksList(task.boardId)),
       this.cache.del(`board:${task.boardId}`),
     ]);
 
@@ -145,6 +149,7 @@ export class TasksService {
     // Invalidate caches
     await Promise.all([
       this.cache.del(this.getCacheKey.task(id)),
+      this.cache.del(this.getCacheKey.tasksList(task.boardId)),
       this.cache.del(`board:${task.boardId}`),
     ]);
 
