@@ -59,14 +59,16 @@ model UserSettings {
 // ============================================
 
 model Workspace {
-  id        String   @id @default(uuid())
-  name      String
-  ownerId   String   @map("owner_id")
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
+  id              String   @id @default(uuid())
+  name            String
+  ownerId         String   @map("owner_id")
+  editorJoinCode  String   @unique @map("editor_join_code")
+  viewerJoinCode  String   @unique @map("viewer_join_code")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
 
   // Relations
-  owner   User              @relation("WorkspaceOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  owner       User                  @relation("WorkspaceOwner", fields: [ownerId], references: [id], onDelete: Cascade)
   members     WorkspaceMember[]
   inviteLinks WorkspaceInviteLink[]
   boards      Board[]

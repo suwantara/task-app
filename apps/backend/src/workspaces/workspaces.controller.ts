@@ -95,6 +95,35 @@ export class WorkspacesController {
   }
 
   // ============================================
+  // JOIN CODE MANAGEMENT
+  // ============================================
+
+  @Post('join-code/:code')
+  joinByCode(
+    @CurrentUser() user: { userId: string },
+    @Param('code') code: string,
+  ) {
+    return this.workspacesService.joinByCode(code, user.userId);
+  }
+
+  @Get(':id/join-codes')
+  getJoinCodes(
+    @CurrentUser() user: { userId: string },
+    @Param('id') id: string,
+  ) {
+    return this.workspacesService.getJoinCodes(id, user.userId);
+  }
+
+  @Post(':id/join-codes/:role/regenerate')
+  regenerateJoinCode(
+    @CurrentUser() user: { userId: string },
+    @Param('id') id: string,
+    @Param('role') role: 'EDITOR' | 'VIEWER',
+  ) {
+    return this.workspacesService.regenerateJoinCode(id, role, user.userId);
+  }
+
+  // ============================================
   // MEMBERS
   // ============================================
 

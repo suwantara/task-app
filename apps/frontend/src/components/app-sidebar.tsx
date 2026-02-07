@@ -8,6 +8,7 @@ import { useWorkspace } from '@/contexts/workspace-context';
 import { apiClient } from '@/lib/api';
 import { ShareDialog } from '@/components/share-dialog';
 import { WorkspaceMembers } from '@/components/workspace-members';
+import { JoinWorkspaceDialog } from '@/components/join-workspace-dialog';
 import { Input } from '@/components/ui/input';
 import {
   Sidebar,
@@ -66,6 +67,8 @@ import {
   Pencil,
   Trash2,
   Star,
+  Users,
+  UserPlus,
 } from 'lucide-react';
 
 interface Board {
@@ -180,6 +183,21 @@ export function AppSidebar() {
                     <span className="ml-2">{ws.name}</span>
                   </DropdownMenuItem>
                 ))}
+                <DropdownMenuSeparator />
+                <JoinWorkspaceDialog>
+                  <DropdownMenuItem onSelect={(e) => e.preventDefault()}>
+                    <UserPlus className="mr-2 size-4" />
+                    Join Workspace
+                  </DropdownMenuItem>
+                </JoinWorkspaceDialog>
+                {activeWorkspace && (
+                  <DropdownMenuItem
+                    onClick={() => router.push(`/workspace/${activeWorkspace.id}/members`)}
+                  >
+                    <Users className="mr-2 size-4" />
+                    Members & Settings
+                  </DropdownMenuItem>
+                )}
                 <DropdownMenuSeparator />
                 <DropdownMenuItem
                   onClick={() => router.push('/dashboard')}

@@ -27,11 +27,22 @@ export class WorkspacesService {
     members: (workspaceId: string) => `workspace:${workspaceId}:members`,
   };
 
+  private generateJoinCode(): string {
+    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+    let code = '';
+    for (let i = 0; i < 6; i++) {
+      code += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    return code;
+  }
+
   async create(userId: string, createWorkspaceDto: CreateWorkspaceDto) {
     const workspace = await this.prisma.workspace.create({
       data: {
         name: createWorkspaceDto.name,
         ownerId: userId,
+        editorJoinCode: this.generateJoinCode(),
+        viewerJoinCode: this.generateJoinCode(),
         members: {
           create: {
             userId: userId,
@@ -432,6 +443,118 @@ export class WorkspacesService {
     ]);
 
     return deleted;
+  }
+
+  // ============================================
+  // JOIN CODE MANAGEMENT
+  // ============================================
+
+  async joinByCode(code: string, userId: string) {
+    const normalizedCode = code.toUpperCase().trim();
+
+    // Find workspace by either code
+    const workspace = await this.prisma.workspace.findFirst({
+      where: {
+        OR: [
+          { editorJoinCode: normalizedCode },
+          { viewerJoinCode: normalizedCode },
+        ],
+      },
+    });
+
+    if (!workspace) {
+      throw new NotFoundException('Invalid join code');
+    }
+
+    // Check if already a member
+    const existingMember = await this.prisma.workspaceMember.findUnique({
+      where: {
+        workspaceId_userId: {
+          workspaceId: workspace.id,
+          userId,
+        },
+      },
+    });
+
+    if (existingMember) {
+      throw new BadRequestException('You are already a member of this workspace');
+    }
+
+    // Determine role based on code used
+    const role = workspace.editorJoinCode === normalizedCode ? 'EDITOR' : 'VIEWER';
+
+    const member = await this.prisma.workspaceMember.create({
+      data: {
+        workspaceId: workspace.id,
+        userId,
+        role,
+      },
+      include: {
+        workspace: true,
+      },
+    });
+
+    // Invalidate caches
+    await Promise.all([
+      this.cache.del(this.getCacheKey.members(workspace.id)),
+      this.cache.del(this.getCacheKey.workspace(workspace.id)),
+      this.cache.del(this.getCacheKey.workspacesList(userId)),
+    ]);
+
+    return member;
+  }
+
+  async getJoinCodes(workspaceId: string, userId: string) {
+    const workspace = await this.prisma.workspace.findUnique({
+      where: { id: workspaceId },
+    });
+
+    if (!workspace) {
+      throw new NotFoundException('Workspace not found');
+    }
+
+    // Only owner can see join codes
+    if (workspace.ownerId !== userId) {
+      throw new ForbiddenException('Only the workspace owner can view join codes');
+    }
+
+    return {
+      editorJoinCode: workspace.editorJoinCode,
+      viewerJoinCode: workspace.viewerJoinCode,
+    };
+  }
+
+  async regenerateJoinCode(
+    workspaceId: string,
+    role: 'EDITOR' | 'VIEWER',
+    userId: string,
+  ) {
+    const workspace = await this.prisma.workspace.findUnique({
+      where: { id: workspaceId },
+    });
+
+    if (!workspace) {
+      throw new NotFoundException('Workspace not found');
+    }
+
+    if (workspace.ownerId !== userId) {
+      throw new ForbiddenException('Only the workspace owner can regenerate codes');
+    }
+
+    const newCode = this.generateJoinCode();
+    const updateData = role === 'EDITOR'
+      ? { editorJoinCode: newCode }
+      : { viewerJoinCode: newCode };
+
+    await this.prisma.workspace.update({
+      where: { id: workspaceId },
+      data: updateData,
+    });
+
+    // Invalidate workspace cache
+    await this.cache.del(this.getCacheKey.workspace(workspaceId));
+
+    return { role, newCode };
   }
 
   // ============================================
