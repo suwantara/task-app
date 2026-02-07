@@ -22,4 +22,4 @@ RUN cd apps/backend && npx prisma generate && npm run build
 WORKDIR /app/apps/backend
 
 EXPOSE 3000
-CMD ["sh", "-c", "npx prisma migrate deploy || echo 'Migration warning'; node dist/main"]
+CMD ["sh", "-c", "npx prisma migrate deploy || echo 'Migration warning'; echo 'Starting server...'; ls dist/main.js && node dist/main 2>&1 || echo 'Server crashed with exit code:' $?"]
