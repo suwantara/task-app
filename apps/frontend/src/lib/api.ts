@@ -182,6 +182,12 @@ class ApiClient {
     });
   }
 
+  async deleteNote(id: string) {
+    return this.request<void>(`/notes/${id}`, {
+      method: 'DELETE',
+    });
+  }
+
   // User settings endpoints
   async getUserProfile() {
     return this.request<User>('/users/me');

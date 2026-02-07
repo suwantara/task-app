@@ -26,8 +26,15 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { SimpleEditor } from '@/components/tiptap-templates/simple/simple-editor';
-import { Plus, Save, FileText, Clock, Search, Pencil } from 'lucide-react';
+import { Plus, Save, FileText, Clock, Search, Pencil, Trash2, MoreHorizontal } from 'lucide-react';
 import * as Y from 'yjs';
 import { SocketIOYjsProvider, getUserColor } from '@/lib/y-socket-io-provider';
 
@@ -61,6 +68,11 @@ export default function NotesPage() {
   const [saving, setSaving] = useState(false);
   const [creating, setCreating] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [showRenameModal, setShowRenameModal] = useState(false);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [noteToModify, setNoteToModify] = useState<Note | null>(null);
+  const [renameTitle, setRenameTitle] = useState('');
+  const [deleting, setDeleting] = useState(false);
   const autoSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const editingEmitTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -371,6 +383,57 @@ export default function NotesPage() {
       )
     : notes;
 
+  const handleDeleteNote = async () => {
+    if (!noteToModify) return;
+    setDeleting(true);
+    try {
+      await apiClient.deleteNote(noteToModify.id);
+      setNotes((prev) => prev.filter((n) => n.id !== noteToModify.id));
+      if (selectedNote?.id === noteToModify.id) {
+        setSelectedNote(null);
+        setEditingContent('');
+        setEditingTitle('');
+      }
+      setShowDeleteModal(false);
+      setNoteToModify(null);
+    } catch (error) {
+      console.error('Failed to delete note:', error);
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  const handleRenameNote = async () => {
+    if (!noteToModify || !renameTitle.trim()) return;
+    try {
+      const updated = await apiClient.updateNote(noteToModify.id, { title: renameTitle.trim() });
+      setNotes((prev) => prev.map((n) => (n.id === noteToModify.id ? { ...n, title: updated.title } : n)));
+      if (selectedNote?.id === noteToModify.id) {
+        setSelectedNote((prev) => prev ? { ...prev, title: updated.title } : null);
+        setEditingTitle(updated.title);
+      }
+      setShowRenameModal(false);
+      setNoteToModify(null);
+      setRenameTitle('');
+    } catch (error) {
+      console.error('Failed to rename note:', error);
+    }
+  };
+
+  const openRenameModal = (note: Note, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setNoteToModify(note);
+    setRenameTitle(note.title);
+    setShowRenameModal(true);
+  };
+
+  const openDeleteModal = (note: Note, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setNoteToModify(note);
+    setShowDeleteModal(true);
+  };
+
+
   if (authLoading || loading) {
     return (
       <div className="flex items-center justify-center p-12">
@@ -429,29 +492,57 @@ export default function NotesPage() {
         <ScrollArea className="flex-1">
           <div className="space-y-0.5 px-2 py-1">
             {filteredNotes.map((note) => (
-              <button
+              <div
                 key={note.id}
-                onClick={() => handleSelectNote(note)}
-                className={`flex w-full items-start gap-2.5 rounded-md px-3 py-2.5 text-left transition-colors ${
+                className={`group relative flex w-full items-start gap-2.5 rounded-md px-3 py-2.5 text-left transition-colors ${
                   selectedNote?.id === note.id
                     ? 'bg-accent text-accent-foreground'
                     : 'hover:bg-muted/50 text-foreground'
                 }`}
               >
-                <div className="relative mt-0.5">
-                  <FileText className="size-4 shrink-0 text-muted-foreground" />
-                  {editingUsers.has(note.id) && (editingUsers.get(note.id)?.size ?? 0) > 0 && (
-                    <span className="absolute -right-0.5 -top-0.5 size-2 rounded-full bg-blue-500 ring-1 ring-background" />
-                  )}
-                </div>
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-medium">{note.title}</p>
-                  <div className="mt-0.5 flex items-center gap-1 text-[10px] text-muted-foreground">
-                    <Clock className="size-3" />
-                    {new Date(note.updatedAt).toLocaleDateString()}
+                <button
+                  onClick={() => handleSelectNote(note)}
+                  className="flex flex-1 items-start gap-2.5"
+                >
+                  <div className="relative mt-0.5">
+                    <FileText className="size-4 shrink-0 text-muted-foreground" />
+                    {editingUsers.has(note.id) && (editingUsers.get(note.id)?.size ?? 0) > 0 && (
+                      <span className="absolute -right-0.5 -top-0.5 size-2 rounded-full bg-blue-500 ring-1 ring-background" />
+                    )}
                   </div>
-                </div>
-              </button>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-medium">{note.title}</p>
+                    <div className="mt-0.5 flex items-center gap-1 text-[10px] text-muted-foreground">
+                      <Clock className="size-3" />
+                      {new Date(note.updatedAt).toLocaleDateString()}
+                    </div>
+                  </div>
+                </button>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <button
+                      className="mt-0.5 rounded p-0.5 opacity-0 transition-opacity hover:bg-muted group-hover:opacity-100 focus:opacity-100"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <MoreHorizontal className="size-4 text-muted-foreground" />
+                    </button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-32">
+                    <DropdownMenuItem onClick={(e) => openRenameModal(note, e)}>
+                      <Pencil className="mr-2 size-3.5" />
+                      Rename
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem
+                      onClick={(e) => openDeleteModal(note, e)}
+                      className="text-destructive focus:text-destructive"
+                    >
+                      <Trash2 className="mr-2 size-3.5" />
+                      Delete
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </div>
             ))}
 
             {filteredNotes.length === 0 && (
@@ -595,6 +686,80 @@ export default function NotesPage() {
               <Button type="submit" disabled={creating}>Create</Button>
             </DialogFooter>
           </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Rename Note Modal */}
+      <Dialog open={showRenameModal} onOpenChange={setShowRenameModal}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Rename Note</DialogTitle>
+            <DialogDescription>
+              Enter a new name for this note.
+            </DialogDescription>
+          </DialogHeader>
+          <form onSubmit={(e) => { e.preventDefault(); handleRenameNote(); }}>
+            <div className="space-y-4 py-4">
+              <div className="space-y-2">
+                <Label htmlFor="rename-title">Title</Label>
+                <Input
+                  id="rename-title"
+                  placeholder="Note title"
+                  value={renameTitle}
+                  onChange={(e) => setRenameTitle(e.target.value)}
+                  autoFocus
+                />
+              </div>
+            </div>
+            <DialogFooter>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => {
+                  setShowRenameModal(false);
+                  setNoteToModify(null);
+                  setRenameTitle('');
+                }}
+              >
+                Cancel
+              </Button>
+              <Button type="submit" disabled={!renameTitle.trim()}>
+                Rename
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Note Confirmation Modal */}
+      <Dialog open={showDeleteModal} onOpenChange={setShowDeleteModal}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Delete Note</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to delete &quot;{noteToModify?.title}&quot;? This action cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => {
+                setShowDeleteModal(false);
+                setNoteToModify(null);
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              onClick={handleDeleteNote}
+              disabled={deleting}
+            >
+              {deleting ? 'Deleting...' : 'Delete'}
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>
