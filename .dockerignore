@@ -1,0 +1,10 @@
+node_modules
+.next
+.git
+.vscode
+.agent
+*.md
+apps/frontend/node_modules
+apps/frontend/.next
+apps/backend/node_modules
+apps/backend/dist
