@@ -1,14 +1,16 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { PermissionsService } from '../common/permissions.service';
+import { RealtimeService } from '../realtime/realtime.service';
 import { CreateTaskDto } from './dto/create-task.dto';
 import { UpdateTaskDto } from './dto/update-task.dto';
 
 @Injectable()
 export class TasksService {
   constructor(
-    private prisma: PrismaService,
-    private permissions: PermissionsService,
+    private readonly prisma: PrismaService,
+    private readonly permissions: PermissionsService,
+    private readonly realtime: RealtimeService,
   ) {}
 
   async create(userId: string, createTaskDto: CreateTaskDto) {
@@ -46,6 +48,9 @@ export class TasksService {
         },
         labels: true,
       },
+    }).then((task) => {
+      this.realtime.emitTaskCreated(boardId, task);
+      return task;
     });
   }
 
@@ -99,14 +104,19 @@ export class TasksService {
         assignee: { select: { id: true, name: true, avatarUrl: true } },
         labels: true,
       },
+    }).then((task) => {
+      this.realtime.emitTaskUpdated(task.boardId, task);
+      return task;
     });
   }
 
   async remove(id: string, userId: string) {
     await this.permissions.validateTaskAccess(userId, id);
 
-    return this.prisma.task.delete({
+    const task = await this.prisma.task.delete({
       where: { id },
     });
+    this.realtime.emitTaskDeleted(task.boardId, task.id);
+    return task;
   }
 }

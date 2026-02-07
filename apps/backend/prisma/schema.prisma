@@ -2,11 +2,11 @@
 
 generator client {
   provider = "prisma-client-js"
-  engineType = "library"
 }
 
 datasource db {
   provider = "postgresql"
+  url      = env("DATABASE_URL")
 }
 
 // ============================================
@@ -29,8 +29,29 @@ model User {
   createdTasks         Task[]            @relation("TaskCreator")
   assignedTasks        Task[]            @relation("TaskAssignee")
   createdNotes         Note[]            @relation("NoteCreator")
+  settings             UserSettings?
+  createdInviteLinks   WorkspaceInviteLink[] @relation("InviteLinkCreator")
 
   @@map("users")
+}
+
+// ============================================
+// USER SETTINGS
+// ============================================
+
+model UserSettings {
+  id                    String  @id @default(uuid())
+  userId                String  @unique @map("user_id")
+  language              String  @default("en")
+  timezone              String  @default("UTC")
+  emailNotifications    Boolean @default(true) @map("email_notifications")
+  pushNotifications     Boolean @default(true) @map("push_notifications")
+  realtimeNotifications Boolean @default(true) @map("realtime_notifications")
+
+  // Relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("user_settings")
 }
 
 // ============================================
@@ -46,25 +67,27 @@ model Workspace {
 
   // Relations
   owner   User              @relation("WorkspaceOwner", fields: [ownerId], references: [id], onDelete: Cascade)
-  members WorkspaceMember[]
-  boards  Board[]
-  tasks   Task[]
-  labels  Label[]
-  notes   Note[]
+  members     WorkspaceMember[]
+  inviteLinks WorkspaceInviteLink[]
+  boards      Board[]
+  tasks       Task[]
+  labels      Label[]
+  notes       Note[]
 
   @@map("workspaces")
 }
 
 enum MemberRole {
   OWNER
-  MEMBER
+  EDITOR
+  VIEWER
 }
 
 model WorkspaceMember {
   id          String     @id @default(uuid())
   workspaceId String     @map("workspace_id")
   userId      String     @map("user_id")
-  role        MemberRole @default(MEMBER)
+  role        MemberRole @default(EDITOR)
   joinedAt    DateTime   @default(now()) @map("joined_at")
 
   // Relations
@@ -73,6 +96,29 @@ model WorkspaceMember {
 
   @@unique([workspaceId, userId])
   @@map("workspace_members")
+}
+
+// ============================================
+// WORKSPACE INVITE LINKS
+// ============================================
+
+model WorkspaceInviteLink {
+  id          String     @id @default(uuid())
+  workspaceId String     @map("workspace_id")
+  token       String     @unique
+  role        MemberRole @default(EDITOR)
+  isActive    Boolean    @default(true) @map("is_active")
+  expiresAt   DateTime?  @map("expires_at")
+  maxUses     Int?       @map("max_uses")
+  useCount    Int        @default(0) @map("use_count")
+  createdById String     @map("created_by_id")
+  createdAt   DateTime   @default(now()) @map("created_at")
+
+  // Relations
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  createdBy User      @relation("InviteLinkCreator", fields: [createdById], references: [id], onDelete: Cascade)
+
+  @@map("workspace_invite_links")
 }
 
 // ============================================

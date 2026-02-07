@@ -1,4 +1,21 @@
 {
+  "name": "task-app",
+  "version": "1.0.0",
+  "private": true,
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "build:shared": "cd packages/shared-types && npm run build",
+    "build:backend": "cd apps/backend && npm run build",
+    "build:frontend": "cd apps/frontend && npm run build",
+    "dev:backend": "cd apps/backend && npm run start:dev",
+    "dev:frontend": "cd apps/frontend && npm run dev",
+    "prisma:generate": "cd apps/backend && npx prisma generate",
+    "prisma:migrate": "cd apps/backend && npx prisma migrate deploy",
+    "prisma:studio": "cd apps/backend && npx prisma studio"
+  },
   "devDependencies": {
     "shadcn": "^3.8.4"
   }

@@ -2,19 +2,19 @@
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
 
 class ApiClient {
-  private baseUrl: string;
+  private readonly baseUrl: string;
   private token: string | null = null;
 
   constructor(baseUrl: string) {
     this.baseUrl = baseUrl;
-    if (typeof window !== 'undefined') {
+    if (typeof globalThis.window !== 'undefined') {
       this.token = localStorage.getItem('token');
     }
   }
 
   setToken(token: string | null) {
     this.token = token;
-    if (typeof window !== 'undefined') {
+    if (typeof globalThis.window !== 'undefined') {
       if (token) {
         localStorage.setItem('token', token);
       } else {
@@ -168,6 +168,89 @@ class ApiClient {
       body: JSON.stringify(data),
     });
   }
+
+  // User settings endpoints
+  async getUserProfile() {
+    return this.request<User>('/users/me');
+  }
+
+  async updateUserProfile(data: { name?: string; email?: string; avatarUrl?: string }) {
+    return this.request<User>('/users/me', {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async updatePassword(currentPassword: string, newPassword: string) {
+    return this.request<{ message: string }>('/users/me/password', {
+      method: 'PATCH',
+      body: JSON.stringify({ currentPassword, newPassword }),
+    });
+  }
+
+  async getUserSettings() {
+    return this.request<UserSettings>('/users/me/settings');
+  }
+
+  async updateUserSettings(data: Partial<UserSettings>) {
+    return this.request<UserSettings>('/users/me/settings', {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async deleteAccount() {
+    return this.request<{ message: string }>('/users/me', {
+      method: 'DELETE',
+    });
+  }
+
+  // Workspace invite link endpoints
+  async createInviteLink(workspaceId: string, data?: { role?: string; expiresAt?: string; maxUses?: number }) {
+    return this.request<InviteLink>(`/workspaces/${workspaceId}/invite-links`, {
+      method: 'POST',
+      body: JSON.stringify(data || {}),
+    });
+  }
+
+  async getInviteLinks(workspaceId: string) {
+    return this.request<InviteLink[]>(`/workspaces/${workspaceId}/invite-links`);
+  }
+
+  async revokeInviteLink(linkId: string) {
+    return this.request<InviteLink>(`/workspaces/invite-links/${linkId}`, {
+      method: 'DELETE',
+    });
+  }
+
+  async getInviteLinkInfo(token: string) {
+    return this.request<InviteLinkInfo>(`/workspaces/join/${token}/info`);
+  }
+
+  async joinByInviteLink(token: string) {
+    return this.request<{ workspace: { id: string; name: string }; alreadyMember: boolean }>(
+      `/workspaces/join/${token}`,
+      { method: 'POST' }
+    );
+  }
+
+  // Workspace members endpoints
+  async getWorkspaceMembers(workspaceId: string) {
+    return this.request<WorkspaceMember[]>(`/workspaces/${workspaceId}/members`);
+  }
+
+  async updateMemberRole(workspaceId: string, memberId: string, role: string) {
+    return this.request<WorkspaceMember>(`/workspaces/${workspaceId}/members/${memberId}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ role }),
+    });
+  }
+
+  async removeMember(workspaceId: string, memberId: string) {
+    return this.request<void>(`/workspaces/${workspaceId}/members/${memberId}`, {
+      method: 'DELETE',
+    });
+  }
 }
 
 // Types
@@ -184,6 +267,49 @@ interface Workspace {
   ownerId: string;
   createdAt: string;
   updatedAt: string;
+  members?: WorkspaceMember[];
+  _count?: { members: number };
+}
+
+interface WorkspaceMember {
+  id: string;
+  workspaceId: string;
+  userId: string;
+  role: 'OWNER' | 'EDITOR' | 'VIEWER';
+  joinedAt: string;
+  user: {
+    id: string;
+    name: string;
+    email: string;
+    avatarUrl?: string;
+  };
+}
+
+interface InviteLink {
+  id: string;
+  workspaceId: string;
+  token: string;
+  role: 'OWNER' | 'EDITOR' | 'VIEWER';
+  isActive: boolean;
+  expiresAt?: string;
+  maxUses?: number;
+  useCount: number;
+  createdById: string;
+  createdAt: string;
+  createdBy?: {
+    id: string;
+    name: string;
+    email: string;
+  };
+}
+
+interface InviteLinkInfo {
+  workspaceName: string;
+  role: string;
+  isActive: boolean;
+  isExpired: boolean;
+  isMaxedOut: boolean;
+  memberCount: number;
 }
 
 interface Board {
@@ -240,6 +366,16 @@ interface Note {
   coverImage?: string;
   createdAt: string;
   updatedAt: string;
+}
+
+interface UserSettings {
+  id: string;
+  userId: string;
+  language: string;
+  timezone: string;
+  emailNotifications: boolean;
+  pushNotifications: boolean;
+  realtimeNotifications: boolean;
 }
 
 export const apiClient = new ApiClient(API_BASE_URL);

@@ -156,16 +156,54 @@ The application uses the following main entities:
 ### Backend (.env)
 
 ```env
-DATABASE_URL="postgresql://user:password@localhost:5432/taskapp"
+DATABASE_URL="postgresql://user:password@your-neon-host.neon.tech/dbname?sslmode=require"
 JWT_SECRET="your-secret-key"
 PORT=3000
+FRONTEND_URL="https://your-frontend.vercel.app"
 ```
 
 ### Frontend (.env.local)
 
 ```env
-NEXT_PUBLIC_API_URL=http://localhost:3000
+NEXT_PUBLIC_API_URL=https://your-backend.example.com
+NEXT_PUBLIC_WS_URL=https://your-backend.example.com
 ```
+
+## 🚀 Deployment
+
+### Frontend → Vercel
+
+1. Go to [vercel.com](https://vercel.com) and import the repository
+2. Set **Root Directory** to `apps/frontend`
+3. Framework Preset: **Next.js**
+4. Override **Install Command**: `cd ../.. && npm install && npm run build:shared`
+5. Add environment variables:
+   - `NEXT_PUBLIC_API_URL` = your deployed backend URL
+   - `NEXT_PUBLIC_WS_URL` = your deployed backend URL
+6. Deploy
+
+### Backend → Railway / Render / Fly.io
+
+The NestJS backend uses WebSocket (Socket.IO), so it needs a persistent server (not serverless).
+
+**Railway:**
+1. Create a new project, connect your repo
+2. Set Root Directory to `apps/backend`
+3. Add environment variables: `DATABASE_URL`, `JWT_SECRET`, `PORT`, `FRONTEND_URL`
+4. Railway auto-detects the Dockerfile at `apps/backend/Dockerfile`
+
+**Or manually with Dockerfile:**
+```bash
+cd apps/backend
+docker build -f Dockerfile -t task-app-backend ../..
+docker run -p 3000:3000 --env-file .env task-app-backend
+```
+
+### Database → Neon
+
+1. Create a Neon project at [neon.tech](https://neon.tech)
+2. Copy the connection string to `DATABASE_URL`
+3. Run migrations: `cd apps/backend && npx prisma migrate deploy`
 
 ## 📝 Development
 
