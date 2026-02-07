@@ -32,6 +32,8 @@ import {
   Eye,
   UserMinus,
   Loader2,
+  RefreshCw,
+  Hash,
 } from 'lucide-react';
 
 interface InviteLink {
@@ -78,27 +80,31 @@ export function ShareDialog({
 }: Readonly<ShareDialogProps>) {
   const [members, setMembers] = useState<Member[]>([]);
   const [inviteLinks, setInviteLinks] = useState<InviteLink[]>([]);
+  const [joinCodes, setJoinCodes] = useState<{ editorJoinCode: string; viewerJoinCode: string } | null>(null);
   const [loading, setLoading] = useState(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [newLinkRole, setNewLinkRole] = useState<string>('EDITOR');
   const [creatingLink, setCreatingLink] = useState(false);
+  const [regeneratingCode, setRegeneratingCode] = useState<string | null>(null);
 
   const loadData = useCallback(async () => {
     if (!workspaceId) return;
     setLoading(true);
     try {
-      const [membersData, linksData] = await Promise.all([
+      const [membersData, linksData, codesData] = await Promise.all([
         apiClient.getWorkspaceMembers(workspaceId),
         apiClient.getInviteLinks(workspaceId).catch(() => []),
+        isOwner ? apiClient.getJoinCodes(workspaceId).catch(() => null) : Promise.resolve(null),
       ]);
       setMembers(membersData);
       setInviteLinks(linksData);
+      setJoinCodes(codesData);
     } catch (error) {
       console.error('Failed to load share data:', error);
     } finally {
       setLoading(false);
     }
-  }, [workspaceId]);
+  }, [workspaceId, isOwner]);
 
   useEffect(() => {
     if (open) {
@@ -123,6 +129,24 @@ export function ShareDialog({
     await navigator.clipboard.writeText(url);
     setCopiedId(linkId);
     setTimeout(() => setCopiedId(null), 2000);
+  };
+
+  const handleCopyCode = async (code: string, codeType: string) => {
+    await navigator.clipboard.writeText(code);
+    setCopiedId(codeType);
+    setTimeout(() => setCopiedId(null), 2000);
+  };
+
+  const handleRegenerateCode = async (role: 'EDITOR' | 'VIEWER') => {
+    setRegeneratingCode(role);
+    try {
+      await apiClient.regenerateJoinCode(workspaceId, role);
+      await loadData();
+    } catch (error) {
+      console.error('Failed to regenerate code:', error);
+    } finally {
+      setRegeneratingCode(null);
+    }
   };
 
   const handleRevokeLink = async (linkId: string) => {
@@ -282,6 +306,91 @@ export function ShareDialog({
 
           {/* Invite Links Tab */}
           <TabsContent value="links" className="space-y-4">
+            {/* Quick Join Codes (owner only) */}
+            {isOwner && joinCodes && (
+              <div className="space-y-3 rounded-lg border bg-muted/30 p-4">
+                <div className="flex items-center gap-2">
+                  <Hash className="size-4 text-muted-foreground" />
+                  <Label className="text-sm font-medium">Quick Join Codes</Label>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Share these 6-character codes for easy joining
+                </p>
+                <div className="grid gap-3">
+                  {/* Editor Code */}
+                  <div className="flex items-center justify-between rounded-md border bg-background px-3 py-2">
+                    <div className="flex items-center gap-3">
+                      <Badge variant="secondary" className="gap-1">
+                        <Pencil className="size-3" />
+                        Editor
+                      </Badge>
+                      <code className="font-mono text-lg font-bold tracking-widest">
+                        {joinCodes.editorJoinCode}
+                      </code>
+                    </div>
+                    <div className="flex gap-1">
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        className="size-8"
+                        onClick={() => handleCopyCode(joinCodes.editorJoinCode, 'editor')}
+                      >
+                        {copiedId === 'editor' ? (
+                          <Check className="size-4 text-green-500" />
+                        ) : (
+                          <Copy className="size-4" />
+                        )}
+                      </Button>
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        className="size-8"
+                        onClick={() => handleRegenerateCode('EDITOR')}
+                        disabled={regeneratingCode === 'EDITOR'}
+                      >
+                        <RefreshCw className={`size-4 ${regeneratingCode === 'EDITOR' ? 'animate-spin' : ''}`} />
+                      </Button>
+                    </div>
+                  </div>
+                  {/* Viewer Code */}
+                  <div className="flex items-center justify-between rounded-md border bg-background px-3 py-2">
+                    <div className="flex items-center gap-3">
+                      <Badge variant="outline" className="gap-1">
+                        <Eye className="size-3" />
+                        Viewer
+                      </Badge>
+                      <code className="font-mono text-lg font-bold tracking-widest">
+                        {joinCodes.viewerJoinCode}
+                      </code>
+                    </div>
+                    <div className="flex gap-1">
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        className="size-8"
+                        onClick={() => handleCopyCode(joinCodes.viewerJoinCode, 'viewer')}
+                      >
+                        {copiedId === 'viewer' ? (
+                          <Check className="size-4 text-green-500" />
+                        ) : (
+                          <Copy className="size-4" />
+                        )}
+                      </Button>
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        className="size-8"
+                        onClick={() => handleRegenerateCode('VIEWER')}
+                        disabled={regeneratingCode === 'VIEWER'}
+                      >
+                        <RefreshCw className={`size-4 ${regeneratingCode === 'VIEWER' ? 'animate-spin' : ''}`} />
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
             {/* Create new link */}
             <div className="space-y-2">
               <Label className="text-sm font-medium">Create invite link</Label>

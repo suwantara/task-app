@@ -270,6 +270,20 @@ class ApiClient {
       method: 'DELETE',
     });
   }
+
+  // Join codes endpoints
+  async getJoinCodes(workspaceId: string) {
+    return this.request<{ editorJoinCode: string; viewerJoinCode: string }>(
+      `/workspaces/${workspaceId}/join-codes`
+    );
+  }
+
+  async regenerateJoinCode(workspaceId: string, role: 'EDITOR' | 'VIEWER') {
+    return this.request<{ code: string }>(
+      `/workspaces/${workspaceId}/join-codes/${role}/regenerate`,
+      { method: 'POST' }
+    );
+  }
 }
 
 // Types

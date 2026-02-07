@@ -229,24 +229,29 @@ export function SimpleEditor({ content: initialContent = '', onChange, placehold
       }),
     ]
 
-    // Add Yjs collaboration if ydoc is provided
-    if (ydoc) {
-      baseExtensions.push(
-        Collaboration.configure({
-          document: ydoc,
-        })
-      )
-      
-      if (awareness && user) {
+    // Add Yjs collaboration if ydoc is provided and valid
+    // Defensive check: ensure ydoc exists and has the required internals
+    if (ydoc && typeof ydoc.get === 'function') {
+      try {
         baseExtensions.push(
-          CollaborationCursor.configure({
-            provider: { awareness } as unknown as null,
-            user: {
-              name: user.name,
-              color: user.color,
-            },
+          Collaboration.configure({
+            document: ydoc,
           })
         )
+        
+        if (awareness && user) {
+          baseExtensions.push(
+            CollaborationCursor.configure({
+              provider: { awareness } as unknown as null,
+              user: {
+                name: user.name,
+                color: user.color,
+              },
+            })
+          )
+        }
+      } catch (e) {
+        console.warn('Failed to initialize Yjs collaboration:', e)
       }
     }
 
