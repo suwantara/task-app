@@ -1,36 +1,130 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Task Management Frontend
+
+A modern, responsive task management application built with Next.js, React, and Tailwind CSS.
+
+## Features
+
+- **Authentication**: Secure login and registration
+- **Workspaces**: Organize your projects into separate workspaces
+- **Kanban Boards**: Visual task management with drag-and-drop functionality
+- **Tasks**: Create, edit, and delete tasks with priorities and descriptions
+- **Notes**: Rich text note-taking for documentation
+- **Real-time**: Ready for real-time collaboration (WebSocket integration)
+
+## Tech Stack
+
+- **Next.js 16**: React framework with App Router
+- **TypeScript**: Type-safe development
+- **Tailwind CSS**: Utility-first CSS framework
+- **Shadcn/UI**: High-quality UI components
+- **@dnd-kit**: Drag-and-drop functionality
 
 ## Getting Started
 
-First, run the development server:
+### Prerequisites
+
+- Node.js 18+
+- npm or yarn
+- Backend API running (see apps/backend)
+
+### Installation
 
 ```bash
+# Install dependencies
+npm install
+
+# Set up environment variables
+cp .env.local.example .env.local
+# Edit .env.local and set NEXT_PUBLIC_API_URL
+
+# Run development server
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [http://localhost:3000](http://localhost:3000) to view the application.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+### Environment Variables
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+Create a `.env.local` file with:
 
-## Learn More
+```
+NEXT_PUBLIC_API_URL=http://localhost:3000
+```
 
-To learn more about Next.js, take a look at the following resources:
+## Development
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+```bash
+# Development server
+npm run dev
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+# Build for production
+npm run build
 
-## Deploy on Vercel
+# Start production server
+npm start
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+# Lint code
+npm run lint
+```
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## Project Structure
+
+```
+src/
+├── app/                    # Next.js App Router pages
+│   ├── auth/              # Authentication pages
+│   ├── board/             # Board/Kanban view
+│   ├── dashboard/         # Main dashboard
+│   ├── notes/             # Notes page
+│   └── workspace/         # Workspace pages
+├── contexts/              # React contexts
+│   └── auth-context.tsx   # Authentication context
+├── lib/                   # Utilities and helpers
+│   ├── api.ts            # API client
+│   └── utils.ts          # Utility functions
+└── components/            # Reusable components (future)
+```
+
+## Features Overview
+
+### Authentication
+- Login and register pages
+- JWT token management
+- Protected routes
+
+### Dashboard
+- View all workspaces
+- Create new workspaces
+- Navigate to boards
+
+### Workspaces
+- Manage boards within a workspace
+- Create new boards
+- View board details
+
+### Kanban Board
+- Drag-and-drop tasks between columns
+- Create, edit, and delete tasks
+- Task priorities (Low, Medium, High)
+- Visual task organization
+
+### Notes
+- Create and edit notes
+- Organize notes by workspace
+- Simple text editor
+
+## API Integration
+
+The frontend communicates with the backend API using the API client (`src/lib/api.ts`). All requests include JWT authentication tokens when available.
+
+## Contributing
+
+1. Create a feature branch
+2. Make your changes
+3. Test thoroughly
+4. Submit a pull request
+
+## License
+
+This project is part of the task-app monorepo.
+
