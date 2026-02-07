@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { useAuth } from '@/contexts/auth-context';
+import { useWorkspace } from '@/contexts/workspace-context';
 import { useRouter } from 'next/navigation';
 import { apiClient } from '@/lib/api';
 import { useNoteRealtime } from '@/hooks/use-realtime';
@@ -19,13 +20,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -48,16 +42,10 @@ interface Note {
   updatedAt: string;
 }
 
-interface Workspace {
-  id: string;
-  name: string;
-}
-
 export default function NotesPage() {
   const { user, loading: authLoading } = useAuth();
   const router = useRouter();
-  const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
-  const [selectedWorkspaceId, setSelectedWorkspaceId] = useState<string>('');
+  const { activeWorkspace } = useWorkspace();
   const [notes, setNotes] = useState<Note[]>([]);
   const [selectedNote, setSelectedNote] = useState<Note | null>(null);
   const [loading, setLoading] = useState(true);
@@ -96,7 +84,7 @@ export default function NotesPage() {
 
   // Realtime hook
   const { emitNoteEditing, emitNoteStopEditing, emitContentUpdate } = useNoteRealtime(
-    selectedWorkspaceId || null,
+    activeWorkspace?.id || null,
     {
       onSomeoneEditing: useCallback((data: { noteId: string; userId: string; name: string }) => {
         if (data.userId === user?.id) return;
@@ -165,18 +153,16 @@ export default function NotesPage() {
     }
   }, [user, authLoading, router]);
 
+  // Clear selected note and reload when workspace changes
   useEffect(() => {
-    if (user) {
-      loadWorkspaces();
-    }
-  }, [user]);
-
-  useEffect(() => {
-    if (selectedWorkspaceId) {
+    if (activeWorkspace) {
+      setSelectedNote(null);
+      setEditingContent('');
+      setEditingTitle('');
       loadNotes();
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedWorkspaceId]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeWorkspace?.id]);
 
   // Cleanup: emit stop-editing on unmount and cleanup Yjs
   useEffect(() => {
@@ -198,39 +184,30 @@ export default function NotesPage() {
     selectedNoteRef.current = selectedNote?.id ?? null;
   }, [selectedNote]);
 
-  const loadWorkspaces = async () => {
+  const loadNotes = async () => {
+    if (!activeWorkspace) {
+      setLoading(false);
+      return;
+    }
+
     try {
-      const data = await apiClient.getWorkspaces();
-      setWorkspaces(data);
-      if (data.length > 0) {
-        setSelectedWorkspaceId(data[0].id);
-      }
+      const data = await apiClient.getNotes(activeWorkspace.id);
+      setNotes(data);
     } catch (error) {
-      console.error('Failed to load workspaces:', error);
+      console.error('Failed to load notes:', error);
     } finally {
       setLoading(false);
     }
   };
 
-  const loadNotes = async () => {
-    if (!selectedWorkspaceId) return;
-
-    try {
-      const data = await apiClient.getNotes(selectedWorkspaceId);
-      setNotes(data);
-    } catch (error) {
-      console.error('Failed to load notes:', error);
-    }
-  };
-
   const handleCreateNote = async (e: React.BaseSyntheticEvent) => {
     e.preventDefault();
-    if (!newNoteTitle.trim() || !selectedWorkspaceId || creating) return;
+    if (!newNoteTitle.trim() || !activeWorkspace || creating) return;
     setCreating(true);
 
     try {
       const newNote = await apiClient.createNote(
-        selectedWorkspaceId,
+        activeWorkspace.id,
         newNoteTitle
       );
       setNewNoteTitle('');
@@ -450,22 +427,10 @@ export default function NotesPage() {
       <div className="flex w-72 shrink-0 flex-col border-r">
         <div className="flex items-center justify-between border-b px-4 py-3">
           <h2 className="text-sm font-semibold">Notes</h2>
-          <div className="flex items-center gap-1">
-            <Select
-              value={selectedWorkspaceId}
-              onValueChange={setSelectedWorkspaceId}
-            >
-              <SelectTrigger className="h-7 w-28 text-xs">
-                <SelectValue placeholder="Workspace" />
-              </SelectTrigger>
-              <SelectContent>
-                {workspaces.map((workspace) => (
-                  <SelectItem key={workspace.id} value={workspace.id}>
-                    {workspace.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-muted-foreground truncate max-w-24">
+              {activeWorkspace?.name || 'No workspace'}
+            </span>
             <Button
               variant="ghost"
               size="sm"

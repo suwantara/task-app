@@ -7,6 +7,7 @@ import { SidebarProvider, SidebarInset, SidebarTrigger } from '@/components/ui/s
 import { AppSidebar } from '@/components/app-sidebar';
 import { Separator } from '@/components/ui/separator';
 import { SocketProvider } from '@/contexts/socket-context';
+import { WorkspaceProvider } from '@/contexts/workspace-context';
 import { PresenceIndicator } from '@/components/presence-indicator';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { usePagePresence } from '@/hooks/use-page-presence';
@@ -39,22 +40,25 @@ export default function AppLayout({ children }: Readonly<{ children: React.React
 
   return (
     <SocketProvider>
-      <PagePresenceTracker />
-      <TooltipProvider delayDuration={200}>
-        <SidebarProvider>
-          <AppSidebar />
-          <SidebarInset>
-            <header className="flex h-12 shrink-0 items-center gap-2 border-b px-4">
-              <SidebarTrigger className="-ml-1" />
-              <Separator orientation="vertical" className="mr-2 h-4" />
-              <div className="ml-auto">
-                <PresenceIndicator />
-              </div>
-            </header>
-            <main className="flex-1">{children}</main>
-          </SidebarInset>
-        </SidebarProvider>
-      </TooltipProvider>
+      <WorkspaceProvider>
+        <PagePresenceTracker />
+        <TooltipProvider delayDuration={200}>
+          <SidebarProvider>
+            <AppSidebar />
+            <SidebarInset>
+              <header className="flex h-12 shrink-0 items-center gap-2 border-b px-4">
+                <SidebarTrigger className="-ml-1" />
+                <Separator orientation="vertical" className="mr-2 h-4" />
+                <div className="ml-auto">
+                  <PresenceIndicator />
+                </div>
+              </header>
+              <main className="flex-1">{children}</main>
+            </SidebarInset>
+          </SidebarProvider>
+        </TooltipProvider>
+      </WorkspaceProvider>
     </SocketProvider>
   );
 }
+

@@ -40,7 +40,7 @@ export function SocketProvider({ children }: Readonly<{ children: React.ReactNod
   const socketRef = useRef<Socket | null>(null);
   const [connected, setConnected] = useState(false);
   const [onlineUsers, setOnlineUsers] = useState<PresenceUser[]>([]);
-  const [currentPage, setCurrentPageState] = useState('');
+  const [currentPage, internalSetCurrentPage] = useState('');
   const joinedRoomsRef = useRef<Set<string>>(new Set());
   const currentRoomRef = useRef<string | null>(null);
   // Version counter to trigger context updates when socket changes
@@ -108,7 +108,7 @@ export function SocketProvider({ children }: Readonly<{ children: React.ReactNod
   }, []);
 
   const setCurrentPage = useCallback((page: string) => {
-    setCurrentPageState(page);
+    internalSetCurrentPage(page);
     // Emit page update to server if connected and in a room
     if (socketRef.current && currentRoomRef.current) {
       socketRef.current.emit('presence:update-page', {

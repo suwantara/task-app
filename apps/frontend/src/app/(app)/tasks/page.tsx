@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useAuth } from '@/contexts/auth-context';
+import { useWorkspace } from '@/contexts/workspace-context';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { apiClient } from '@/lib/api';
@@ -53,11 +54,6 @@ import {
 
 type Priority = 'LOW' | 'MEDIUM' | 'HIGH';
 
-interface Workspace {
-  id: string;
-  name: string;
-}
-
 interface Board {
   id: string;
   name: string;
@@ -96,9 +92,8 @@ type SortDir = 'asc' | 'desc';
 export default function TasksTablePage() {
   const { user, loading: authLoading } = useAuth();
   const router = useRouter();
+  const { activeWorkspace } = useWorkspace();
 
-  const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
-  const [selectedWorkspaceId, setSelectedWorkspaceId] = useState<string>('');
   const [boards, setBoards] = useState<Board[]>([]);
   const [tasks, setTasks] = useState<TaskRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -124,35 +119,20 @@ export default function TasksTablePage() {
     }
   }, [user, authLoading, router]);
 
+  // Load tasks when workspace changes
   useEffect(() => {
-    if (user) loadWorkspaces();
-  }, [user]);
-
-  useEffect(() => {
-    if (selectedWorkspaceId) loadAllTasks();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedWorkspaceId]);
-
-  const loadWorkspaces = async () => {
-    try {
-      const data = await apiClient.getWorkspaces();
-      setWorkspaces(data);
-      if (data.length > 0) {
-        setSelectedWorkspaceId(data[0].id);
-      }
-    } catch (error) {
-      console.error('Failed to load workspaces:', error);
-    } finally {
-      setLoading(false);
+    if (activeWorkspace) {
+      loadAllTasks();
     }
-  };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeWorkspace?.id]);
 
   const loadAllTasks = async () => {
-    if (!selectedWorkspaceId) return;
+    if (!activeWorkspace) return;
     setLoading(true);
 
     try {
-      const boardsData = await apiClient.getBoards(selectedWorkspaceId);
+      const boardsData = await apiClient.getBoards(activeWorkspace.id);
       setBoards(boardsData);
 
       const allTasks: TaskRow[] = [];
@@ -285,21 +265,9 @@ export default function TasksTablePage() {
         </div>
 
         <div className="flex items-center gap-3">
-          <Select
-            value={selectedWorkspaceId}
-            onValueChange={setSelectedWorkspaceId}
-          >
-            <SelectTrigger className="w-45 h-8 text-sm">
-              <SelectValue placeholder="Workspace" />
-            </SelectTrigger>
-            <SelectContent>
-              {workspaces.map((ws) => (
-                <SelectItem key={ws.id} value={ws.id}>
-                  {ws.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <span className="text-sm text-muted-foreground">
+            {activeWorkspace?.name || 'No workspace'}
+          </span>
 
           <Select value={filterBoard} onValueChange={setFilterBoard}>
             <SelectTrigger className="w-37.5 h-8 text-sm">

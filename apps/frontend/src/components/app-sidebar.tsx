@@ -1,9 +1,10 @@
 'use client';
 
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/auth-context';
+import { useWorkspace } from '@/contexts/workspace-context';
 import { apiClient } from '@/lib/api';
 import { ShareDialog } from '@/components/share-dialog';
 import { WorkspaceMembers } from '@/components/workspace-members';
@@ -67,25 +68,6 @@ import {
   Star,
 } from 'lucide-react';
 
-interface WorkspaceMember {
-  id: string;
-  userId: string;
-  role: string;
-  user: {
-    id: string;
-    name: string;
-    email: string;
-    avatarUrl?: string;
-  };
-}
-
-interface Workspace {
-  id: string;
-  name: string;
-  ownerId: string;
-  members?: WorkspaceMember[];
-}
-
 interface Board {
   id: string;
   name: string;
@@ -97,66 +79,54 @@ export function AppSidebar() {
   const pathname = usePathname();
   const router = useRouter();
   const { state } = useSidebar();
+  
+  // Use workspace context instead of local state
+  const { workspaces, activeWorkspace, setActiveWorkspace } = useWorkspace();
 
-  const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
-  const [activeWorkspace, setActiveWorkspace] = useState<Workspace | null>(null);
   const [boards, setBoards] = useState<Board[]>([]);
   const [shareOpen, setShareOpen] = useState(false);
   const [renamingBoard, setRenamingBoard] = useState<Board | null>(null);
   const [renameValue, setRenameValue] = useState('');
   const [deletingBoard, setDeletingBoard] = useState<Board | null>(null);
 
-  const loadWorkspaces = useCallback(async () => {
+  const fetchBoards = async (workspaceId: string) => {
     try {
-      const data = await apiClient.getWorkspaces();
-      setWorkspaces(data as Workspace[]);
-      if (data.length > 0 && !activeWorkspace) {
-        setActiveWorkspace(data[0] as Workspace);
-      }
-    } catch (error) {
-      console.error('Failed to load workspaces:', error);
-    }
-  }, [activeWorkspace]);
-
-  const loadBoards = useCallback(async () => {
-    if (!activeWorkspace) return;
-    try {
-      const data = await apiClient.getBoards(activeWorkspace.id);
+      const data = await apiClient.getBoards(workspaceId);
       setBoards(data);
     } catch (error) {
       console.error('Failed to load boards:', error);
     }
+  };
+
+  useEffect(() => {
+    if (!activeWorkspace) return;
+    // Async data fetching in effect is a valid pattern
+    (async () => {
+      await fetchBoards(activeWorkspace.id);
+    })();
   }, [activeWorkspace]);
 
-  useEffect(() => {
-    if (user) { loadWorkspaces(); }
-  }, [user, loadWorkspaces]);
-
-  useEffect(() => {
-    if (activeWorkspace) { loadBoards(); }
-  }, [activeWorkspace, loadBoards]);
-
   const handleRenameBoard = async () => {
-    if (!renamingBoard || !renameValue.trim()) return;
+    if (!renamingBoard || !renameValue.trim() || !activeWorkspace) return;
     try {
       await apiClient.updateBoard(renamingBoard.id, { name: renameValue });
       setRenamingBoard(null);
-      loadBoards();
+      fetchBoards(activeWorkspace.id);
     } catch (error) {
       console.error('Failed to rename board:', error);
     }
   };
 
   const handleDeleteBoard = async () => {
-    if (!deletingBoard) return;
+    if (!deletingBoard || !activeWorkspace) return;
     try {
       await apiClient.deleteBoard(deletingBoard.id);
       setDeletingBoard(null);
       // If the deleted board is currently open, navigate to workspace
       if (pathname.startsWith(`/board/${deletingBoard.id}`)) {
-        router.push(activeWorkspace ? `/workspace/${activeWorkspace.id}` : '/dashboard');
+        router.push(`/workspace/${activeWorkspace.id}`);
       }
-      loadBoards();
+      fetchBoards(activeWorkspace.id);
     } catch (error) {
       console.error('Failed to delete board:', error);
     }
