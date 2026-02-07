@@ -19,6 +19,9 @@ RUN cd packages/shared-types && npx tsc
 RUN cd apps/backend && npx prisma generate && npm run build
 
 EXPOSE 3000
+WORKDIR /app/apps/backend
 
-# Stay in /app root so node_modules resolve correctly
-CMD ["sh", "-c", "cd apps/backend && npx prisma migrate deploy 2>&1 || echo 'Migration warning'; echo 'Starting node...'; cd /app && node apps/backend/dist/main"]
+# NODE_PATH ensures node can find modules in the hoisted root node_modules
+ENV NODE_PATH=/app/node_modules
+
+CMD ["sh", "-c", "npx prisma migrate deploy 2>&1 || echo 'Migration warning'; echo 'Starting server...'; node dist/main"]
