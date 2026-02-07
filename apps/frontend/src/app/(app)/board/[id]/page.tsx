@@ -626,7 +626,6 @@ export default function BoardPage() {
             </DialogFooter>
           </DialogContent>
         </Dialog>
-      </div>
     </div>
   );
 }
