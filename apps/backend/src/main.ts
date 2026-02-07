@@ -8,8 +8,19 @@ async function bootstrap() {
 
   // Enable CORS
   const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3001';
+  const allowedOrigins = frontendUrl.split(',').map((url) => url.trim());
   app.enableCors({
-    origin: frontendUrl.split(',').map((url) => url.trim()),
+    origin: (origin, callback) => {
+      if (
+        !origin ||
+        allowedOrigins.some((allowed) => origin === allowed) ||
+        /\.vercel\.app$/.test(origin)
+      ) {
+        callback(null, true);
+      } else {
+        callback(null, false);
+      }
+    },
     methods: 'GET,HEAD,PUT,PATCH,POST,DELETE',
     credentials: true,
   });

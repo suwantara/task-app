@@ -18,9 +18,19 @@ interface PresenceUser {
 
 @WebSocketGateway({
   cors: {
-    origin: process.env.FRONTEND_URL
-      ? process.env.FRONTEND_URL.split(',').map((url) => url.trim())
-      : '*',
+    origin: (origin: string, callback: (err: Error | null, allow?: boolean) => void) => {
+      const frontendUrl = process.env.FRONTEND_URL || '';
+      const allowedOrigins = frontendUrl.split(',').map((url) => url.trim());
+      if (
+        !origin ||
+        allowedOrigins.some((allowed) => origin === allowed) ||
+        /\.vercel\.app$/.test(origin)
+      ) {
+        callback(null, true);
+      } else {
+        callback(null, false);
+      }
+    },
     credentials: true,
   },
 })
