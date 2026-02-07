@@ -607,6 +607,7 @@ export default function NotesPage() {
             <div className="flex-1 overflow-hidden">
               {ydocReady && ydocRef.current ? (
                 <SimpleEditor
+                  key={`editor-yjs-${selectedNote?.id}`}
                   content={editingContent}
                   onChange={handleContentChange}
                   placeholder="Start writing..."
@@ -616,6 +617,7 @@ export default function NotesPage() {
                 />
               ) : (
                 <SimpleEditor
+                  key={`editor-plain-${selectedNote?.id}`}
                   content={editingContent}
                   onChange={handleContentChange}
                   placeholder="Start writing..."
