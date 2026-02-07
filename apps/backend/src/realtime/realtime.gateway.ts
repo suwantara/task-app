@@ -14,6 +14,7 @@ interface PresenceUser {
   name: string;
   avatarUrl?: string;
   cursor?: { x: number; y: number };
+  currentPage?: string;
 }
 
 @WebSocketGateway({
@@ -30,6 +31,12 @@ export class RealtimeGateway
 
   // Map<room, Map<socketId, PresenceUser>>
   private readonly roomPresence = new Map<string, Map<string, PresenceUser>>();
+
+  // Map<noteId, Uint8Array> - stores Yjs document state
+  private readonly yjsDocs = new Map<string, Uint8Array>();
+
+  // Map<noteId, Set<socketId>> - tracks clients in each Yjs room
+  private readonly yjsRooms = new Map<string, Set<string>>();
 
   handleConnection(client: Socket) {
     console.log(`Client connected: ${client.id}`);
@@ -179,5 +186,109 @@ export class RealtimeGateway
       noteId: data.noteId,
       userId: data.userId,
     });
+  }
+
+  // --- Page Presence ---
+
+  @SubscribeMessage('presence:update-page')
+  handleUpdatePage(
+    @MessageBody() data: { room: string; page: string },
+    @ConnectedSocket() client: Socket,
+  ) {
+    const members = this.roomPresence.get(data.room);
+    if (members?.has(client.id)) {
+      const user = members.get(client.id)!;
+      user.currentPage = data.page;
+      members.set(client.id, user);
+      // Broadcast updated presence list
+      this.server.to(data.room).emit('presence:update', {
+        users: Array.from(members.values()),
+      });
+    }
+  }
+
+  // --- Yjs Collaborative Editing ---
+
+  @SubscribeMessage('yjs:join')
+  handleYjsJoin(
+    @MessageBody() data: { noteId: string },
+    @ConnectedSocket() client: Socket,
+  ) {
+    const room = `yjs:${data.noteId}`;
+    void client.join(room);
+
+    // Track client
+    if (!this.yjsRooms.has(data.noteId)) {
+      this.yjsRooms.set(data.noteId, new Set());
+    }
+    this.yjsRooms.get(data.noteId)!.add(client.id);
+
+    // Send current doc state (if any)
+    const docState = this.yjsDocs.get(data.noteId);
+    client.emit('yjs:sync', {
+      noteId: data.noteId,
+      update: docState ? Array.from(docState) : [],
+    });
+  }
+
+  @SubscribeMessage('yjs:update')
+  handleYjsUpdate(
+    @MessageBody() data: { noteId: string; update: number[] },
+    @ConnectedSocket() client: Socket,
+  ) {
+    const updateArray = new Uint8Array(data.update);
+    const room = `yjs:${data.noteId}`;
+
+    // Merge update into stored doc state
+    const existing = this.yjsDocs.get(data.noteId);
+    if (existing) {
+      // Concatenate updates (simplified; in production use Y.mergeUpdates)
+      const merged = new Uint8Array(existing.length + updateArray.length);
+      merged.set(existing, 0);
+      merged.set(updateArray, existing.length);
+      this.yjsDocs.set(data.noteId, merged);
+    } else {
+      this.yjsDocs.set(data.noteId, updateArray);
+    }
+
+    // Broadcast to others in the room
+    client.to(room).emit('yjs:update', {
+      noteId: data.noteId,
+      update: data.update,
+    });
+  }
+
+  @SubscribeMessage('yjs:awareness')
+  handleYjsAwareness(
+    @MessageBody() data: { noteId: string; update: number[] },
+    @ConnectedSocket() client: Socket,
+  ) {
+    const room = `yjs:${data.noteId}`;
+    // Relay awareness to others
+    client.to(room).emit('yjs:awareness', {
+      noteId: data.noteId,
+      update: data.update,
+    });
+  }
+
+  @SubscribeMessage('yjs:leave')
+  handleYjsLeave(
+    @MessageBody() data: { noteId: string },
+    @ConnectedSocket() client: Socket,
+  ) {
+    const room = `yjs:${data.noteId}`;
+    void client.leave(room);
+
+    // Remove client from tracking
+    const clients = this.yjsRooms.get(data.noteId);
+    if (clients) {
+      clients.delete(client.id);
+      // Cleanup if no more clients
+      if (clients.size === 0) {
+        this.yjsRooms.delete(data.noteId);
+        // Optionally keep yjsDocs for persistence, or clear:
+        // this.yjsDocs.delete(data.noteId);
+      }
+    }
   }
 }

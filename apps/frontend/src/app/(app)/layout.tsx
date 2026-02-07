@@ -9,6 +9,13 @@ import { Separator } from '@/components/ui/separator';
 import { SocketProvider } from '@/contexts/socket-context';
 import { PresenceIndicator } from '@/components/presence-indicator';
 import { TooltipProvider } from '@/components/ui/tooltip';
+import { usePagePresence } from '@/hooks/use-page-presence';
+
+// Wrapper component to use hooks inside SocketProvider
+function PagePresenceTracker() {
+  usePagePresence();
+  return null;
+}
 
 export default function AppLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   const { user, loading } = useAuth();
@@ -32,6 +39,7 @@ export default function AppLayout({ children }: Readonly<{ children: React.React
 
   return (
     <SocketProvider>
+      <PagePresenceTracker />
       <TooltipProvider delayDuration={200}>
         <SidebarProvider>
           <AppSidebar />

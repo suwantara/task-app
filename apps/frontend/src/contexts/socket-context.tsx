@@ -1,6 +1,6 @@
 'use client';
 
-import { createContext, useContext, useEffect, useRef, useState, useCallback } from 'react';
+import { createContext, useContext, useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import { io, Socket } from 'socket.io-client';
 import { apiClient } from '@/lib/api';
 import { useAuth } from '@/contexts/auth-context';
@@ -12,6 +12,7 @@ interface PresenceUser {
   name: string;
   avatarUrl?: string;
   cursor?: { x: number; y: number };
+  currentPage?: string;
 }
 
 interface SocketContextType {
@@ -20,6 +21,8 @@ interface SocketContextType {
   joinRoom: (room: string) => void;
   leaveRoom: (room: string) => void;
   onlineUsers: PresenceUser[];
+  currentPage: string;
+  setCurrentPage: (page: string) => void;
 }
 
 const SocketContext = createContext<SocketContextType>({
@@ -28,6 +31,8 @@ const SocketContext = createContext<SocketContextType>({
   joinRoom: () => {},
   leaveRoom: () => {},
   onlineUsers: [],
+  currentPage: '',
+  setCurrentPage: () => {},
 });
 
 export function SocketProvider({ children }: Readonly<{ children: React.ReactNode }>) {
@@ -35,68 +40,101 @@ export function SocketProvider({ children }: Readonly<{ children: React.ReactNod
   const socketRef = useRef<Socket | null>(null);
   const [connected, setConnected] = useState(false);
   const [onlineUsers, setOnlineUsers] = useState<PresenceUser[]>([]);
+  const [currentPage, setCurrentPageState] = useState('');
   const joinedRoomsRef = useRef<Set<string>>(new Set());
+  const currentRoomRef = useRef<string | null>(null);
+  // Version counter to trigger context updates when socket changes
+  const [socketVersion, setSocketVersion] = useState(0);
 
   useEffect(() => {
     if (!user) return;
 
     const token = apiClient.getToken();
-    const socket = io(SOCKET_URL, {
+    if (!token) return;
+
+    const newSocket = io(SOCKET_URL, {
       auth: { token },
-      transports: ['websocket', 'polling'],
+      transports: ['websocket'],
     });
 
-    socket.on('connect', () => {
+    newSocket.on('connect', () => {
       setConnected(true);
     });
 
-    socket.on('disconnect', () => {
+    newSocket.on('disconnect', () => {
       setConnected(false);
     });
 
-    socket.on('presence:update', (data: { users: PresenceUser[] }) => {
+    newSocket.on('presence:update', (data: { users: PresenceUser[] }) => {
       setOnlineUsers(data.users);
     });
 
-    socketRef.current = socket;
+    socketRef.current = newSocket;
+    setSocketVersion((v) => v + 1);
+
+    // Copy ref value before cleanup (React lint requirement)
+    const joinedRooms = joinedRoomsRef.current;
 
     return () => {
-      socket.disconnect();
+      newSocket.disconnect();
       socketRef.current = null;
-      joinedRoomsRef.current.clear();
+      joinedRooms.clear();
     };
   }, [user]);
+
 
   const joinRoom = useCallback(
     (room: string) => {
       if (socketRef.current && user && !joinedRoomsRef.current.has(room)) {
         socketRef.current.emit('joinRoom', {
           room,
-          user: { userId: user.id, name: user.name, avatarUrl: user.avatarUrl },
+          user: { userId: user.id, name: user.name, avatarUrl: user.avatarUrl, currentPage: currentPage },
         });
         joinedRoomsRef.current.add(room);
+        currentRoomRef.current = room;
       }
     },
-    [user],
+    [user, currentPage],
   );
 
   const leaveRoom = useCallback((room: string) => {
     if (socketRef.current && joinedRoomsRef.current.has(room)) {
       socketRef.current.emit('leaveRoom', room);
       joinedRoomsRef.current.delete(room);
+      if (currentRoomRef.current === room) {
+        currentRoomRef.current = null;
+      }
     }
   }, []);
 
+  const setCurrentPage = useCallback((page: string) => {
+    setCurrentPageState(page);
+    // Emit page update to server if connected and in a room
+    if (socketRef.current && currentRoomRef.current) {
+      socketRef.current.emit('presence:update-page', {
+        room: currentRoomRef.current,
+        page,
+      });
+    }
+  }, []);
+
+  // Memoize context value to include socket from ref, triggered by socketVersion
+  const contextValue = useMemo<SocketContextType>(
+    () => ({
+      socket: socketRef.current,
+      connected,
+      joinRoom,
+      leaveRoom,
+      onlineUsers,
+      currentPage,
+      setCurrentPage,
+    }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [socketVersion, connected, joinRoom, leaveRoom, onlineUsers, currentPage, setCurrentPage],
+  );
+
   return (
-    <SocketContext.Provider
-      value={{
-        socket: socketRef.current,
-        connected,
-        joinRoom,
-        leaveRoom,
-        onlineUsers,
-      }}
-    >
+    <SocketContext.Provider value={contextValue}>
       {children}
     </SocketContext.Provider>
   );
@@ -105,3 +143,4 @@ export function SocketProvider({ children }: Readonly<{ children: React.ReactNod
 export function useSocket() {
   return useContext(SocketContext);
 }
+

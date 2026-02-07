@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react"
 import { EditorContent, EditorContext, useEditor } from "@tiptap/react"
+import * as Y from 'yjs'
 
 // --- Tiptap Core Extensions ---
 import { StarterKit } from "@tiptap/starter-kit"
@@ -13,6 +14,9 @@ import { Highlight } from "@tiptap/extension-highlight"
 import { Subscript } from "@tiptap/extension-subscript"
 import { Superscript } from "@tiptap/extension-superscript"
 import { Selection } from "@tiptap/extensions"
+import Collaboration from '@tiptap/extension-collaboration'
+import CollaborationCursor from '@tiptap/extension-collaboration-cursor'
+import type { Awareness } from 'y-protocols/awareness'
 
 // --- UI Primitives ---
 import { Button } from "@/components/tiptap-ui-primitive/button"
@@ -77,6 +81,10 @@ interface SimpleEditorProps {
   readonly content?: string
   readonly onChange?: (content: string) => void
   readonly placeholder?: string
+  // Yjs collaboration props
+  readonly ydoc?: Y.Doc
+  readonly awareness?: Awareness
+  readonly user?: { name: string; color: string }
 }
 
 const MainToolbarContent = ({
@@ -181,7 +189,7 @@ const MobileToolbarContent = ({
   </>
 )
 
-export function SimpleEditor({ content: initialContent = '', onChange, placeholder }: SimpleEditorProps) {
+export function SimpleEditor({ content: initialContent = '', onChange, placeholder, ydoc, awareness, user }: SimpleEditorProps) {
   const isMobile = useIsBreakpoint()
   const { height } = useWindowSize()
   const [mobileView, setMobileView] = useState<"main" | "highlighter" | "link">(
@@ -189,24 +197,18 @@ export function SimpleEditor({ content: initialContent = '', onChange, placehold
   )
   const toolbarRef = useRef<HTMLDivElement>(null)
 
-  const editor = useEditor({
-    immediatelyRender: false,
-    editorProps: {
-      attributes: {
-        autocomplete: "off",
-        autocorrect: "off",
-        autocapitalize: "off",
-        "aria-label": placeholder || "Main content area, start typing to enter text.",
-        class: "simple-editor",
-      },
-    },
-    extensions: [
+  // Build extensions array - conditionally include Yjs collaboration
+  const extensions = useMemo(() => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const baseExtensions: any[] = [
       StarterKit.configure({
         horizontalRule: false,
         link: {
           openOnClick: false,
           enableClickSelection: true,
         },
+        // Disable history only when using Yjs
+        ...(ydoc ? { history: false } : {}),
       }),
       HorizontalRule,
       TextAlign.configure({ types: ["heading", "paragraph"] }),
@@ -225,12 +227,51 @@ export function SimpleEditor({ content: initialContent = '', onChange, placehold
         upload: handleImageUpload,
         onError: (error) => console.error("Upload failed:", error),
       }),
-    ],
-    content: initialContent || '',
+    ]
+
+    // Add Yjs collaboration if ydoc is provided
+    if (ydoc) {
+      baseExtensions.push(
+        Collaboration.configure({
+          document: ydoc,
+        })
+      )
+      
+      if (awareness && user) {
+        baseExtensions.push(
+          CollaborationCursor.configure({
+            provider: { awareness } as unknown as null,
+            user: {
+              name: user.name,
+              color: user.color,
+            },
+          })
+        )
+      }
+    }
+
+    return baseExtensions
+  }, [ydoc, awareness, user])
+
+
+  const editor = useEditor({
+    immediatelyRender: false,
+    editorProps: {
+      attributes: {
+        autocomplete: "off",
+        autocorrect: "off",
+        autocapitalize: "off",
+        "aria-label": placeholder || "Main content area, start typing to enter text.",
+        class: "simple-editor",
+      },
+    },
+    extensions,
+    content: ydoc ? undefined : (initialContent || ''),
     onUpdate: ({ editor: e }) => {
       onChange?.(e.getHTML())
     },
   })
+
 
   // Sync external content changes (e.g. switching notes)
   useEffect(() => {

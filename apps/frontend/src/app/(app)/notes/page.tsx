@@ -5,6 +5,7 @@ import { useAuth } from '@/contexts/auth-context';
 import { useRouter } from 'next/navigation';
 import { apiClient } from '@/lib/api';
 import { useNoteRealtime } from '@/hooks/use-realtime';
+import { useSocket } from '@/contexts/socket-context';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -27,6 +28,8 @@ import {
 } from '@/components/ui/select';
 import { SimpleEditor } from '@/components/tiptap-templates/simple/simple-editor';
 import { Plus, Save, FileText, Clock, Search, Pencil } from 'lucide-react';
+import * as Y from 'yjs';
+import { SocketIOYjsProvider, getUserColor } from '@/lib/y-socket-io-provider';
 
 interface Note {
   id: string;
@@ -66,6 +69,12 @@ export default function NotesPage() {
   // Flag to ignore remote content updates when we are actively editing
   const isLocalEdit = useRef(false);
   const selectedNoteRef = useRef<string | null>(null);
+
+  // Yjs collaborative editing
+  const { socket } = useSocket();
+  const ydocRef = useRef<Y.Doc | null>(null);
+  const providerRef = useRef<SocketIOYjsProvider | null>(null);
+  const [yjsSynced, setYjsSynced] = useState(false);
 
   // Helper: get editors for a specific note
   const getEditorsForNote = useCallback((noteId: string) => {
@@ -156,13 +165,23 @@ export default function NotesPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedWorkspaceId]);
 
-  // Cleanup: emit stop-editing on unmount
+  // Cleanup: emit stop-editing on unmount and cleanup Yjs
   useEffect(() => {
     return () => {
       if (autoSaveTimer.current) clearTimeout(autoSaveTimer.current);
       if (editingEmitTimer.current) clearTimeout(editingEmitTimer.current);
+      // Cleanup Yjs provider and doc
+      if (providerRef.current) {
+        providerRef.current.destroy();
+        providerRef.current = null;
+      }
+      if (ydocRef.current) {
+        ydocRef.current.destroy();
+        ydocRef.current = null;
+      }
     };
   }, []);
+
 
   // Keep selectedNoteRef in sync
   useEffect(() => {
@@ -297,6 +316,17 @@ export default function NotesPage() {
       }).catch(() => {});
     }
 
+    // Cleanup previous Yjs provider
+    if (providerRef.current) {
+      providerRef.current.destroy();
+      providerRef.current = null;
+    }
+    if (ydocRef.current) {
+      ydocRef.current.destroy();
+      ydocRef.current = null;
+    }
+    setYjsSynced(false);
+
     try {
       const fullNote = await apiClient.getNote(note.id);
       setSelectedNote(fullNote);
@@ -309,6 +339,24 @@ export default function NotesPage() {
             : JSON.stringify(fullNote.content, null, 2);
       }
       setEditingContent(contentStr);
+
+      // Initialize Yjs for collaborative editing
+      if (socket && user) {
+        const ydoc = new Y.Doc();
+        ydocRef.current = ydoc;
+
+        // Initialize content from server
+        const xmlFragment = ydoc.getXmlFragment('prosemirror');
+        if (contentStr && xmlFragment.length === 0) {
+          // Content will be synced from server via provider
+        }
+
+        const provider = new SocketIOYjsProvider(socket, fullNote.id, ydoc, {
+          user: { name: user.name || user.email, color: getUserColor(user.id) },
+          onSynced: () => setYjsSynced(true),
+        });
+        providerRef.current = provider;
+      }
     } catch (error) {
       console.error('Failed to load note:', error);
     }
@@ -463,12 +511,29 @@ export default function NotesPage() {
 
             {/* Rich Text Editor */}
             <div className="flex-1 overflow-hidden">
-              <SimpleEditor
-                content={editingContent}
-                onChange={handleContentChange}
-                placeholder="Start writing..."
-              />
+              {ydocRef.current ? (
+                <SimpleEditor
+                  content={editingContent}
+                  onChange={handleContentChange}
+                  placeholder="Start writing..."
+                  ydoc={ydocRef.current}
+                  awareness={providerRef.current?.awareness}
+                  user={user ? { name: user.name || user.email, color: providerRef.current?.userColor || '#888' } : undefined}
+                />
+              ) : (
+                <SimpleEditor
+                  content={editingContent}
+                  onChange={handleContentChange}
+                  placeholder="Start writing..."
+                />
+              )}
+              {!yjsSynced && selectedNote && (
+                <div className="absolute bottom-2 right-2 text-xs text-muted-foreground">
+                  Syncing...
+                </div>
+              )}
             </div>
+
           </>
         ) : (
           <div className="flex flex-1 flex-col items-center justify-center gap-4 text-muted-foreground">
