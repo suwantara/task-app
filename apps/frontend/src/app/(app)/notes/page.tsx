@@ -75,6 +75,7 @@ export default function NotesPage() {
   const ydocRef = useRef<Y.Doc | null>(null);
   const providerRef = useRef<SocketIOYjsProvider | null>(null);
   const [yjsSynced, setYjsSynced] = useState(false);
+  const [ydocReady, setYdocReady] = useState(false);
 
   // Helper: get editors for a specific note
   const getEditorsForNote = useCallback((noteId: string) => {
@@ -326,6 +327,7 @@ export default function NotesPage() {
       ydocRef.current = null;
     }
     setYjsSynced(false);
+    setYdocReady(false);
 
     try {
       const fullNote = await apiClient.getNote(note.id);
@@ -356,6 +358,7 @@ export default function NotesPage() {
           onSynced: () => setYjsSynced(true),
         });
         providerRef.current = provider;
+        setYdocReady(true);
       }
     } catch (error) {
       console.error('Failed to load note:', error);
@@ -511,7 +514,7 @@ export default function NotesPage() {
 
             {/* Rich Text Editor */}
             <div className="flex-1 overflow-hidden">
-              {ydocRef.current ? (
+              {ydocReady && ydocRef.current ? (
                 <SimpleEditor
                   content={editingContent}
                   onChange={handleContentChange}
