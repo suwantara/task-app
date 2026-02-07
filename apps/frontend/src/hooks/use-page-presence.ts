@@ -7,10 +7,13 @@ import { useSocket } from '@/contexts/socket-context';
 /**
  * Maps pathname to readable page name for presence display
  */
-function getPageName(pathname: string): string {
+function getPageName(pathname: string | null): string {
+  if (!pathname) return 'Dashboard';
+  
   const segments = pathname.split('/').filter(Boolean);
   
   if (segments.length === 0 || pathname === '/') return 'Dashboard';
+
   
   const pageMap: Record<string, string> = {
     'dashboard': 'Dashboard',
