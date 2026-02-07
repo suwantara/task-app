@@ -9,7 +9,7 @@ import { apiClient } from '@/lib/api';
 interface Note {
   id: string;
   title: string;
-  content?: any;
+  content?: string;
   icon?: string;
   workspaceId: string;
   createdAt: string;
@@ -49,6 +49,7 @@ export default function NotesPage() {
     if (selectedWorkspaceId) {
       loadNotes();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedWorkspaceId]);
 
   const loadWorkspaces = async () => {

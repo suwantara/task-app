@@ -13,13 +13,21 @@ interface Board {
   createdAt: string;
 }
 
+interface Workspace {
+  id: string;
+  name: string;
+  ownerId: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export default function WorkspacePage() {
   const { user, loading: authLoading } = useAuth();
   const router = useRouter();
   const params = useParams();
   const workspaceId = params.id as string;
 
-  const [workspace, setWorkspace] = useState<any>(null);
+  const [workspace, setWorkspace] = useState<Workspace | null>(null);
   const [boards, setBoards] = useState<Board[]>([]);
   const [loading, setLoading] = useState(true);
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -31,12 +39,6 @@ export default function WorkspacePage() {
       router.push('/auth/login');
     }
   }, [user, authLoading, router]);
-
-  useEffect(() => {
-    if (user && workspaceId) {
-      loadWorkspaceData();
-    }
-  }, [user, workspaceId]);
 
   const loadWorkspaceData = async () => {
     try {
@@ -52,6 +54,13 @@ export default function WorkspacePage() {
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    if (user && workspaceId) {
+      loadWorkspaceData();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user, workspaceId]);
 
   const handleCreateBoard = async (e: React.FormEvent) => {
     e.preventDefault();

@@ -22,8 +22,8 @@ export default function RegisterPage() {
     try {
       await register(email, password, name);
       router.push('/dashboard');
-    } catch (err: any) {
-      setError(err.message || 'Failed to register');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to register');
     } finally {
       setLoading(false);
     }

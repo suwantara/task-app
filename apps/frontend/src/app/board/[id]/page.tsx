@@ -5,16 +5,6 @@ import { useAuth } from '@/contexts/auth-context';
 import { useRouter, useParams } from 'next/navigation';
 import Link from 'next/link';
 import { apiClient } from '@/lib/api';
-import {
-  DndContext,
-  DragEndEvent,
-  DragOverlay,
-  DragStartEvent,
-  PointerSensor,
-  useSensor,
-  useSensors,
-} from '@dnd-kit/core';
-import { arrayMove, SortableContext } from '@dnd-kit/sortable';
 
 interface Column {
   id: string;
@@ -34,13 +24,20 @@ interface Task {
   dueDate?: string;
 }
 
+interface Board {
+  id: string;
+  workspaceId: string;
+  name: string;
+  description?: string;
+}
+
 export default function BoardPage() {
   const { user, loading: authLoading } = useAuth();
   const router = useRouter();
   const params = useParams();
   const boardId = params.id as string;
 
-  const [board, setBoard] = useState<any>(null);
+  const [board, setBoard] = useState<Board | null>(null);
   const [columns, setColumns] = useState<Column[]>([]);
   const [loading, setLoading] = useState(true);
   const [showCreateColumnModal, setShowCreateColumnModal] = useState(false);
@@ -50,27 +47,12 @@ export default function BoardPage() {
   const [newTaskTitle, setNewTaskTitle] = useState('');
   const [newTaskDescription, setNewTaskDescription] = useState('');
   const [newTaskPriority, setNewTaskPriority] = useState<'LOW' | 'MEDIUM' | 'HIGH'>('MEDIUM');
-  const [activeTask, setActiveTask] = useState<Task | null>(null);
-
-  const sensors = useSensors(
-    useSensor(PointerSensor, {
-      activationConstraint: {
-        distance: 8,
-      },
-    })
-  );
 
   useEffect(() => {
     if (!authLoading && !user) {
       router.push('/auth/login');
     }
   }, [user, authLoading, router]);
-
-  useEffect(() => {
-    if (user && boardId) {
-      loadBoardData();
-    }
-  }, [user, boardId]);
 
   const loadBoardData = async () => {
     try {
@@ -84,13 +66,13 @@ export default function BoardPage() {
 
       // Organize tasks by column
       const columnsWithTasks = columnsData
-        .map((column: any) => ({
+        .map((column) => ({
           ...column,
           tasks: tasksData
-            .filter((task: any) => task.columnId === column.id)
-            .sort((a: any, b: any) => a.position - b.position),
+            .filter((task) => task.columnId === column.id)
+            .sort((a, b) => a.position - b.position),
         }))
-        .sort((a: any, b: any) => a.position - b.position);
+        .sort((a, b) => a.position - b.position);
 
       setColumns(columnsWithTasks);
     } catch (error) {
@@ -99,6 +81,13 @@ export default function BoardPage() {
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    if (user && boardId) {
+      loadBoardData();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user, boardId]);
 
   const handleCreateColumn = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -116,7 +105,7 @@ export default function BoardPage() {
 
   const handleCreateTask = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newTaskTitle.trim() || !selectedColumnId) return;
+    if (!newTaskTitle.trim() || !selectedColumnId || !board) return;
 
     try {
       const column = columns.find((c) => c.id === selectedColumnId);
@@ -148,61 +137,6 @@ export default function BoardPage() {
       loadBoardData();
     } catch (error) {
       console.error('Failed to delete task:', error);
-    }
-  };
-
-  const handleDragStart = (event: DragStartEvent) => {
-    const { active } = event;
-    const task = columns
-      .flatMap((col) => col.tasks)
-      .find((t) => t.id === active.id);
-    setActiveTask(task || null);
-  };
-
-  const handleDragEnd = async (event: DragEndEvent) => {
-    const { active, over } = event;
-    setActiveTask(null);
-
-    if (!over) return;
-
-    const taskId = active.id as string;
-    const targetColumnId = over.id as string;
-
-    // Find the task and its current column
-    let sourceColumn: Column | undefined;
-    let task: Task | undefined;
-
-    for (const col of columns) {
-      const foundTask = col.tasks.find((t) => t.id === taskId);
-      if (foundTask) {
-        task = foundTask;
-        sourceColumn = col;
-        break;
-      }
-    }
-
-    if (!task || !sourceColumn) return;
-
-    // If dropped on the same column, do nothing for now
-    if (targetColumnId === sourceColumn.id) {
-      return;
-    }
-
-    // Update task position and column
-    const targetColumn = columns.find((col) => col.id === targetColumnId);
-    if (!targetColumn) return;
-
-    try {
-      // Update task in backend
-      await apiClient.updateTask(taskId, {
-        columnId: targetColumnId,
-        position: targetColumn.tasks.length,
-      });
-
-      // Reload data
-      loadBoardData();
-    } catch (error) {
-      console.error('Failed to move task:', error);
     }
   };
 
@@ -261,54 +195,45 @@ export default function BoardPage() {
 
       {/* Kanban Board */}
       <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
-        <DndContext
-          sensors={sensors}
-          onDragStart={handleDragStart}
-          onDragEnd={handleDragEnd}
-        >
-          <div className="flex gap-4 overflow-x-auto pb-4">
-            {columns.map((column) => (
-              <SortableContext
-                key={column.id}
-                items={column.tasks.map((t) => t.id)}
-                id={column.id}
-              >
-                <div
-                  className="flex-shrink-0 w-80 rounded-lg bg-gray-100 p-4"
-                  data-column-id={column.id}
+        <div className="flex gap-4 overflow-x-auto pb-4">
+          {columns.map((column) => (
+            <div
+              key={column.id}
+              className="flex-shrink-0 w-80 rounded-lg bg-gray-100 p-4"
+              data-column-id={column.id}
+            >
+              <div className="mb-4 flex items-center justify-between">
+                <h3 className="font-semibold text-gray-900">
+                  {column.name}
+                  <span className="ml-2 text-sm text-gray-500">
+                    ({column.tasks.length})
+                  </span>
+                </h3>
+                <button
+                  onClick={() => {
+                    setSelectedColumnId(column.id);
+                    setShowCreateTaskModal(true);
+                  }}
+                  className="text-gray-600 hover:text-gray-900"
+                  title="Add task"
                 >
-                  <div className="mb-4 flex items-center justify-between">
-                    <h3 className="font-semibold text-gray-900">
-                      {column.name}
-                      <span className="ml-2 text-sm text-gray-500">
-                        ({column.tasks.length})
-                      </span>
-                    </h3>
-                    <button
-                      onClick={() => {
-                        setSelectedColumnId(column.id);
-                        setShowCreateTaskModal(true);
-                      }}
-                      className="text-gray-600 hover:text-gray-900"
-                      title="Add task"
-                    >
-                      <svg
-                        className="h-5 w-5"
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={2}
-                          d="M12 4v16m8-8H4"
-                        />
-                      </svg>
-                    </button>
-                  </div>
+                  <svg
+                    className="h-5 w-5"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M12 4v16m8-8H4"
+                    />
+                  </svg>
+                </button>
+              </div>
 
-                  <div className="space-y-3 min-h-[200px]">
+              <div className="space-y-3 min-h-[200px]">
                     {column.tasks.map((task) => (
                       <div
                         key={task.id}
@@ -415,8 +340,7 @@ export default function BoardPage() {
                     )}
                   </div>
                 </div>
-              </SortableContext>
-            ))}
+              ))}
 
             {columns.length === 0 && (
               <div className="flex-1 text-center py-12">
@@ -426,7 +350,6 @@ export default function BoardPage() {
               </div>
             )}
           </div>
-        </DndContext>
       </main>
 
       {/* Create Column Modal */}
