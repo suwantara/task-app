@@ -1,0 +1,11 @@
+import { Module, Global } from '@nestjs/common';
+import { PermissionsService } from './permissions.service';
+import { PrismaModule } from '../prisma/prisma.module';
+
+@Global()
+@Module({
+  imports: [PrismaModule],
+  providers: [PermissionsService],
+  exports: [PermissionsService],
+})
+export class CommonModule {}

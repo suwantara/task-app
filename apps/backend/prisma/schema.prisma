@@ -1,0 +1,190 @@
+// prisma/schema.prisma
+
+generator client {
+  provider = "prisma-client-js"
+  engineType = "library"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ============================================
+// USERS & AUTHENTICATION
+// ============================================
+
+model User {
+  id           String   @id @default(uuid())
+  email        String   @unique
+  passwordHash String   @map("password_hash")
+  name         String
+  avatarUrl    String?  @map("avatar_url")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  ownedWorkspaces      Workspace[]       @relation("WorkspaceOwner")
+  workspaceMemberships WorkspaceMember[]
+  createdBoards        Board[]           @relation("BoardCreator")
+  createdTasks         Task[]            @relation("TaskCreator")
+  assignedTasks        Task[]            @relation("TaskAssignee")
+  createdNotes         Note[]            @relation("NoteCreator")
+
+  @@map("users")
+}
+
+// ============================================
+// WORKSPACES
+// ============================================
+
+model Workspace {
+  id        String   @id @default(uuid())
+  name      String
+  ownerId   String   @map("owner_id")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  owner   User              @relation("WorkspaceOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  members WorkspaceMember[]
+  boards  Board[]
+  tasks   Task[]
+  labels  Label[]
+  notes   Note[]
+
+  @@map("workspaces")
+}
+
+enum MemberRole {
+  OWNER
+  MEMBER
+}
+
+model WorkspaceMember {
+  id          String     @id @default(uuid())
+  workspaceId String     @map("workspace_id")
+  userId      String     @map("user_id")
+  role        MemberRole @default(MEMBER)
+  joinedAt    DateTime   @default(now()) @map("joined_at")
+
+  // Relations
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, userId])
+  @@map("workspace_members")
+}
+
+// ============================================
+// KANBAN BOARDS
+// ============================================
+
+model Board {
+  id          String   @id @default(uuid())
+  workspaceId String   @map("workspace_id")
+  name        String
+  description String?
+  creatorId   String?  @map("creator_id")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  creator   User?     @relation("BoardCreator", fields: [creatorId], references: [id], onDelete: SetNull)
+  columns   Column[]
+  tasks     Task[]
+
+  @@map("boards")
+}
+
+model Column {
+  id        String   @id @default(uuid())
+  boardId   String   @map("board_id")
+  name      String
+  position  Int
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  board Board  @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  tasks Task[]
+
+  @@map("columns")
+}
+
+// ============================================
+// TASKS
+// ============================================
+
+enum TaskPriority {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+model Task {
+  id          String       @id @default(uuid())
+  workspaceId String       @map("workspace_id")
+  boardId     String       @map("board_id")
+  columnId    String       @map("column_id")
+  title       String
+  description String?
+  priority    TaskPriority @default(MEDIUM)
+  dueDate     DateTime?    @map("due_date")
+  position    Int
+  creatorId   String?      @map("creator_id")
+  assigneeId  String?      @map("assignee_id")
+  createdAt   DateTime     @default(now()) @map("created_at")
+  updatedAt   DateTime     @updatedAt @map("updated_at")
+
+  // Relations
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  board     Board     @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  column    Column    @relation(fields: [columnId], references: [id], onDelete: Cascade)
+  creator   User?     @relation("TaskCreator", fields: [creatorId], references: [id], onDelete: SetNull)
+  assignee  User?     @relation("TaskAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
+  labels    Label[]
+
+  @@map("tasks")
+}
+
+model Label {
+  id          String   @id @default(uuid())
+  workspaceId String   @map("workspace_id")
+  name        String
+  color       String
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  tasks     Task[]
+
+  @@unique([workspaceId, name])
+  @@map("labels")
+}
+
+// ============================================
+// NOTES
+// ============================================
+
+model Note {
+  id          String   @id @default(uuid())
+  workspaceId String   @map("workspace_id")
+  parentId    String?  @map("parent_id")
+  title       String
+  content     Json? // TipTap JSON content
+  icon        String?
+  coverImage  String?  @map("cover_image")
+  creatorId   String   @map("creator_id")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  creator   User      @relation("NoteCreator", fields: [creatorId], references: [id], onDelete: Cascade)
+  parent    Note?     @relation("NoteHierarchy", fields: [parentId], references: [id], onDelete: Cascade)
+  children  Note[]    @relation("NoteHierarchy")
+
+  @@map("notes")
+}
