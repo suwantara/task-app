@@ -5,6 +5,16 @@ import { useAuth } from '@/contexts/auth-context';
 import { useRouter, useParams } from 'next/navigation';
 import Link from 'next/link';
 import { apiClient } from '@/lib/api';
+import {
+  DndContext,
+  DragEndEvent,
+  DragOverlay,
+  DragStartEvent,
+  PointerSensor,
+  useSensor,
+  useSensors,
+} from '@dnd-kit/core';
+import { arrayMove, SortableContext } from '@dnd-kit/sortable';
 
 interface Column {
   id: string;
@@ -40,6 +50,15 @@ export default function BoardPage() {
   const [newTaskTitle, setNewTaskTitle] = useState('');
   const [newTaskDescription, setNewTaskDescription] = useState('');
   const [newTaskPriority, setNewTaskPriority] = useState<'LOW' | 'MEDIUM' | 'HIGH'>('MEDIUM');
+  const [activeTask, setActiveTask] = useState<Task | null>(null);
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: {
+        distance: 8,
+      },
+    })
+  );
 
   useEffect(() => {
     if (!authLoading && !user) {
@@ -132,6 +151,61 @@ export default function BoardPage() {
     }
   };
 
+  const handleDragStart = (event: DragStartEvent) => {
+    const { active } = event;
+    const task = columns
+      .flatMap((col) => col.tasks)
+      .find((t) => t.id === active.id);
+    setActiveTask(task || null);
+  };
+
+  const handleDragEnd = async (event: DragEndEvent) => {
+    const { active, over } = event;
+    setActiveTask(null);
+
+    if (!over) return;
+
+    const taskId = active.id as string;
+    const targetColumnId = over.id as string;
+
+    // Find the task and its current column
+    let sourceColumn: Column | undefined;
+    let task: Task | undefined;
+
+    for (const col of columns) {
+      const foundTask = col.tasks.find((t) => t.id === taskId);
+      if (foundTask) {
+        task = foundTask;
+        sourceColumn = col;
+        break;
+      }
+    }
+
+    if (!task || !sourceColumn) return;
+
+    // If dropped on the same column, do nothing for now
+    if (targetColumnId === sourceColumn.id) {
+      return;
+    }
+
+    // Update task position and column
+    const targetColumn = columns.find((col) => col.id === targetColumnId);
+    if (!targetColumn) return;
+
+    try {
+      // Update task in backend
+      await apiClient.updateTask(taskId, {
+        columnId: targetColumnId,
+        position: targetColumn.tasks.length,
+      });
+
+      // Reload data
+      loadBoardData();
+    } catch (error) {
+      console.error('Failed to move task:', error);
+    }
+  };
+
   const getPriorityColor = (priority: string) => {
     switch (priority) {
       case 'HIGH':
@@ -187,115 +261,172 @@ export default function BoardPage() {
 
       {/* Kanban Board */}
       <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
-        <div className="flex gap-4 overflow-x-auto pb-4">
-          {columns.map((column) => (
-            <div
-              key={column.id}
-              className="flex-shrink-0 w-80 rounded-lg bg-gray-100 p-4"
-            >
-              <div className="mb-4 flex items-center justify-between">
-                <h3 className="font-semibold text-gray-900">
-                  {column.name}
-                  <span className="ml-2 text-sm text-gray-500">
-                    ({column.tasks.length})
-                  </span>
-                </h3>
-                <button
-                  onClick={() => {
-                    setSelectedColumnId(column.id);
-                    setShowCreateTaskModal(true);
-                  }}
-                  className="text-gray-600 hover:text-gray-900"
-                  title="Add task"
+        <DndContext
+          sensors={sensors}
+          onDragStart={handleDragStart}
+          onDragEnd={handleDragEnd}
+        >
+          <div className="flex gap-4 overflow-x-auto pb-4">
+            {columns.map((column) => (
+              <SortableContext
+                key={column.id}
+                items={column.tasks.map((t) => t.id)}
+                id={column.id}
+              >
+                <div
+                  className="flex-shrink-0 w-80 rounded-lg bg-gray-100 p-4"
+                  data-column-id={column.id}
                 >
-                  <svg
-                    className="h-5 w-5"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M12 4v16m8-8H4"
-                    />
-                  </svg>
-                </button>
-              </div>
-
-              <div className="space-y-3">
-                {column.tasks.map((task) => (
-                  <div
-                    key={task.id}
-                    className="rounded-lg bg-white p-4 shadow hover:shadow-md transition-shadow cursor-pointer"
-                  >
-                    <div className="flex items-start justify-between">
-                      <h4 className="font-medium text-gray-900">
-                        {task.title}
-                      </h4>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleDeleteTask(task.id);
-                        }}
-                        className="text-gray-400 hover:text-red-600"
-                        title="Delete task"
-                      >
-                        <svg
-                          className="h-4 w-4"
-                          fill="none"
-                          stroke="currentColor"
-                          viewBox="0 0 24 24"
-                        >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth={2}
-                            d="M6 18L18 6M6 6l12 12"
-                          />
-                        </svg>
-                      </button>
-                    </div>
-                    {task.description && (
-                      <p className="mt-2 text-sm text-gray-600">
-                        {task.description}
-                      </p>
-                    )}
-                    <div className="mt-3 flex items-center gap-2">
-                      <span
-                        className={`rounded-full px-2 py-1 text-xs font-medium ${getPriorityColor(
-                          task.priority
-                        )}`}
-                      >
-                        {task.priority}
+                  <div className="mb-4 flex items-center justify-between">
+                    <h3 className="font-semibold text-gray-900">
+                      {column.name}
+                      <span className="ml-2 text-sm text-gray-500">
+                        ({column.tasks.length})
                       </span>
-                      {task.dueDate && (
-                        <span className="text-xs text-gray-500">
-                          Due: {new Date(task.dueDate).toLocaleDateString()}
-                        </span>
-                      )}
-                    </div>
+                    </h3>
+                    <button
+                      onClick={() => {
+                        setSelectedColumnId(column.id);
+                        setShowCreateTaskModal(true);
+                      }}
+                      className="text-gray-600 hover:text-gray-900"
+                      title="Add task"
+                    >
+                      <svg
+                        className="h-5 w-5"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M12 4v16m8-8H4"
+                        />
+                      </svg>
+                    </button>
                   </div>
-                ))}
 
-                {column.tasks.length === 0 && (
-                  <p className="text-center text-sm text-gray-500 py-4">
-                    No tasks yet
-                  </p>
-                )}
+                  <div className="space-y-3 min-h-[200px]">
+                    {column.tasks.map((task) => (
+                      <div
+                        key={task.id}
+                        draggable
+                        onDragStart={(e) => {
+                          e.dataTransfer.effectAllowed = 'move';
+                          e.dataTransfer.setData('taskId', task.id);
+                        }}
+                        onDragOver={(e) => {
+                          e.preventDefault();
+                          e.dataTransfer.dropEffect = 'move';
+                        }}
+                        onDrop={async (e) => {
+                          e.preventDefault();
+                          const taskId = e.dataTransfer.getData('taskId');
+                          if (taskId && taskId !== task.id) {
+                            try {
+                              await apiClient.updateTask(taskId, {
+                                columnId: column.id,
+                                position: task.position,
+                              });
+                              loadBoardData();
+                            } catch (error) {
+                              console.error('Failed to move task:', error);
+                            }
+                          }
+                        }}
+                        className="rounded-lg bg-white p-4 shadow hover:shadow-md transition-shadow cursor-move"
+                      >
+                        <div className="flex items-start justify-between">
+                          <h4 className="font-medium text-gray-900">
+                            {task.title}
+                          </h4>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleDeleteTask(task.id);
+                            }}
+                            className="text-gray-400 hover:text-red-600"
+                            title="Delete task"
+                          >
+                            <svg
+                              className="h-4 w-4"
+                              fill="none"
+                              stroke="currentColor"
+                              viewBox="0 0 24 24"
+                            >
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                strokeWidth={2}
+                                d="M6 18L18 6M6 6l12 12"
+                              />
+                            </svg>
+                          </button>
+                        </div>
+                        {task.description && (
+                          <p className="mt-2 text-sm text-gray-600">
+                            {task.description}
+                          </p>
+                        )}
+                        <div className="mt-3 flex items-center gap-2">
+                          <span
+                            className={`rounded-full px-2 py-1 text-xs font-medium ${getPriorityColor(
+                              task.priority
+                            )}`}
+                          >
+                            {task.priority}
+                          </span>
+                          {task.dueDate && (
+                            <span className="text-xs text-gray-500">
+                              Due: {new Date(task.dueDate).toLocaleDateString()}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+
+                    {column.tasks.length === 0 && (
+                      <div
+                        onDragOver={(e) => {
+                          e.preventDefault();
+                          e.dataTransfer.dropEffect = 'move';
+                        }}
+                        onDrop={async (e) => {
+                          e.preventDefault();
+                          const taskId = e.dataTransfer.getData('taskId');
+                          if (taskId) {
+                            try {
+                              await apiClient.updateTask(taskId, {
+                                columnId: column.id,
+                                position: 0,
+                              });
+                              loadBoardData();
+                            } catch (error) {
+                              console.error('Failed to move task:', error);
+                            }
+                          }
+                        }}
+                        className="text-center text-sm text-gray-500 py-8 border-2 border-dashed border-gray-300 rounded"
+                      >
+                        Drop tasks here
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </SortableContext>
+            ))}
+
+            {columns.length === 0 && (
+              <div className="flex-1 text-center py-12">
+                <p className="text-gray-500">
+                  No columns yet. Add a column to get started!
+                </p>
               </div>
-            </div>
-          ))}
-
-          {columns.length === 0 && (
-            <div className="flex-1 text-center py-12">
-              <p className="text-gray-500">
-                No columns yet. Add a column to get started!
-              </p>
-            </div>
-          )}
-        </div>
+            )}
+          </div>
+        </DndContext>
       </main>
 
       {/* Create Column Modal */}
