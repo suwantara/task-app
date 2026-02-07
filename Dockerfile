@@ -18,8 +18,7 @@ RUN cd packages/shared-types && npx tsc
 # Generate Prisma client and build backend
 RUN cd apps/backend && npx prisma generate && npm run build
 
-# Set working directory to backend
-WORKDIR /app/apps/backend
-
 EXPOSE 3000
-CMD ["sh", "-c", "npx prisma migrate deploy || echo 'Migration warning'; echo 'Starting server...'; ls dist/main.js && node dist/main 2>&1 || echo 'Server crashed with exit code:' $?"]
+
+# Stay in /app root so node_modules resolve correctly
+CMD ["sh", "-c", "cd apps/backend && npx prisma migrate deploy 2>&1 || echo 'Migration warning'; echo 'Starting node...'; cd /app && node apps/backend/dist/main"]
