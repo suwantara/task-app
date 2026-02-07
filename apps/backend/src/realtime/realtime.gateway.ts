@@ -8,6 +8,7 @@ import {
   ConnectedSocket,
 } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
+import * as Y from 'yjs';
 
 interface PresenceUser {
   userId: string;
@@ -239,13 +240,10 @@ export class RealtimeGateway
     const updateArray = new Uint8Array(data.update);
     const room = `yjs:${data.noteId}`;
 
-    // Merge update into stored doc state
+    // Properly merge update into stored doc state using Y.mergeUpdates
     const existing = this.yjsDocs.get(data.noteId);
     if (existing) {
-      // Concatenate updates (simplified; in production use Y.mergeUpdates)
-      const merged = new Uint8Array(existing.length + updateArray.length);
-      merged.set(existing, 0);
-      merged.set(updateArray, existing.length);
+      const merged = Y.mergeUpdates([existing, updateArray]);
       this.yjsDocs.set(data.noteId, merged);
     } else {
       this.yjsDocs.set(data.noteId, updateArray);
