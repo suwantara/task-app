@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useCallback } from 'react';
+import { useEffect, useCallback, useRef } from 'react';
 import { useSocket } from '@/contexts/socket-context';
 import type { Task, Column, Note } from '@/lib/api';
 
@@ -24,8 +24,18 @@ interface RealtimeCallbacks {
   }) => void;
 }
 
+interface NoteRealtimeCallbacks {
+  onNoteCreated?: (note: Note) => void;
+  onNoteUpdated?: (note: Note) => void;
+  onNoteDeleted?: (data: { id: string }) => void;
+  onNoteTyping?: (data: { noteId: string; userId: string; name: string }) => void;
+  onNoteStopTyping?: (data: { noteId: string; userId: string }) => void;
+}
+
 export function useBoardRealtime(boardId: string | null, callbacks: RealtimeCallbacks) {
   const { socket, joinRoom, leaveRoom } = useSocket();
+  const cbRef = useRef(callbacks);
+  cbRef.current = callbacks;
 
   useEffect(() => {
     if (!boardId) return;
@@ -39,51 +49,35 @@ export function useBoardRealtime(boardId: string | null, callbacks: RealtimeCall
   useEffect(() => {
     if (!socket) return;
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const handlers: [string, (...args: any[]) => void][] = [];
+    // Use wrapper functions that read from ref — listeners stay stable across renders
+    const onTaskCreated = (t: Task) => cbRef.current.onTaskCreated?.(t);
+    const onTaskUpdated = (t: Task) => cbRef.current.onTaskUpdated?.(t);
+    const onTaskDeleted = (d: { id: string }) => cbRef.current.onTaskDeleted?.(d);
+    const onTaskMoved = (d: { taskId: string; fromColumnId: string; toColumnId: string; position: number }) =>
+      cbRef.current.onTaskMoved?.(d);
+    const onColumnCreated = (c: Column) => cbRef.current.onColumnCreated?.(c);
+    const onColumnUpdated = (c: Column) => cbRef.current.onColumnUpdated?.(c);
+    const onCursorUpdate = (d: { socketId: string; userId: string; name: string; cursor: { x: number; y: number } }) =>
+      cbRef.current.onCursorUpdate?.(d);
 
-    if (callbacks.onTaskCreated) {
-      const h = callbacks.onTaskCreated;
-      socket.on('task:created', h);
-      handlers.push(['task:created', h]);
-    }
-    if (callbacks.onTaskUpdated) {
-      const h = callbacks.onTaskUpdated;
-      socket.on('task:updated', h);
-      handlers.push(['task:updated', h]);
-    }
-    if (callbacks.onTaskDeleted) {
-      const h = callbacks.onTaskDeleted;
-      socket.on('task:deleted', h);
-      handlers.push(['task:deleted', h]);
-    }
-    if (callbacks.onTaskMoved) {
-      const h = callbacks.onTaskMoved;
-      socket.on('task:moved', h);
-      handlers.push(['task:moved', h]);
-    }
-    if (callbacks.onColumnCreated) {
-      const h = callbacks.onColumnCreated;
-      socket.on('column:created', h);
-      handlers.push(['column:created', h]);
-    }
-    if (callbacks.onColumnUpdated) {
-      const h = callbacks.onColumnUpdated;
-      socket.on('column:updated', h);
-      handlers.push(['column:updated', h]);
-    }
-    if (callbacks.onCursorUpdate) {
-      const h = callbacks.onCursorUpdate;
-      socket.on('cursor:update', h);
-      handlers.push(['cursor:update', h]);
-    }
+    socket.on('task:created', onTaskCreated);
+    socket.on('task:updated', onTaskUpdated);
+    socket.on('task:deleted', onTaskDeleted);
+    socket.on('task:moved', onTaskMoved);
+    socket.on('column:created', onColumnCreated);
+    socket.on('column:updated', onColumnUpdated);
+    socket.on('cursor:update', onCursorUpdate);
 
     return () => {
-      for (const [event, handler] of handlers) {
-        socket.off(event, handler);
-      }
+      socket.off('task:created', onTaskCreated);
+      socket.off('task:updated', onTaskUpdated);
+      socket.off('task:deleted', onTaskDeleted);
+      socket.off('task:moved', onTaskMoved);
+      socket.off('column:created', onColumnCreated);
+      socket.off('column:updated', onColumnUpdated);
+      socket.off('cursor:update', onCursorUpdate);
     };
-  }, [socket, callbacks]);
+  }, [socket]);
 
   const emitTaskMove = useCallback(
     (taskId: string, fromColumnId: string, toColumnId: string, position: number) => {
@@ -105,15 +99,11 @@ export function useBoardRealtime(boardId: string | null, callbacks: RealtimeCall
 
 export function useNoteRealtime(
   workspaceId: string | null,
-  callbacks: {
-    onNoteCreated?: (note: Note) => void;
-    onNoteUpdated?: (note: Note) => void;
-    onNoteDeleted?: (data: { id: string }) => void;
-    onNoteTyping?: (data: { noteId: string; userId: string; name: string }) => void;
-    onNoteStopTyping?: (data: { noteId: string; userId: string }) => void;
-  },
+  callbacks: NoteRealtimeCallbacks,
 ) {
   const { socket, joinRoom, leaveRoom } = useSocket();
+  const cbRef = useRef(callbacks);
+  cbRef.current = callbacks;
 
   useEffect(() => {
     if (!workspaceId) return;
@@ -127,45 +117,29 @@ export function useNoteRealtime(
   useEffect(() => {
     if (!socket) return;
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const handlers: [string, (...args: any[]) => void][] = [];
+    // Use wrapper functions that read from ref — listeners stay stable across renders
+    const onNoteCreated = (n: Note) => cbRef.current.onNoteCreated?.(n);
+    const onNoteUpdated = (n: Note) => cbRef.current.onNoteUpdated?.(n);
+    const onNoteDeleted = (d: { id: string }) => cbRef.current.onNoteDeleted?.(d);
+    const onNoteTyping = (d: { noteId: string; userId: string; name: string }) =>
+      cbRef.current.onNoteTyping?.(d);
+    const onNoteStopTyping = (d: { noteId: string; userId: string }) =>
+      cbRef.current.onNoteStopTyping?.(d);
 
-    if (callbacks.onNoteCreated) {
-      const h = callbacks.onNoteCreated;
-      socket.on('note:created', h);
-      handlers.push(['note:created', h]);
-    }
-
-    if (callbacks.onNoteUpdated) {
-      const h = callbacks.onNoteUpdated;
-      socket.on('note:updated', h);
-      handlers.push(['note:updated', h]);
-    }
-
-    if (callbacks.onNoteDeleted) {
-      const h = callbacks.onNoteDeleted;
-      socket.on('note:deleted', h);
-      handlers.push(['note:deleted', h]);
-    }
-
-    if (callbacks.onNoteTyping) {
-      const h = callbacks.onNoteTyping;
-      socket.on('note:typing', h);
-      handlers.push(['note:typing', h]);
-    }
-
-    if (callbacks.onNoteStopTyping) {
-      const h = callbacks.onNoteStopTyping;
-      socket.on('note:stop-typing', h);
-      handlers.push(['note:stop-typing', h]);
-    }
+    socket.on('note:created', onNoteCreated);
+    socket.on('note:updated', onNoteUpdated);
+    socket.on('note:deleted', onNoteDeleted);
+    socket.on('note:typing', onNoteTyping);
+    socket.on('note:stop-typing', onNoteStopTyping);
 
     return () => {
-      for (const [event, handler] of handlers) {
-        socket.off(event, handler);
-      }
+      socket.off('note:created', onNoteCreated);
+      socket.off('note:updated', onNoteUpdated);
+      socket.off('note:deleted', onNoteDeleted);
+      socket.off('note:typing', onNoteTyping);
+      socket.off('note:stop-typing', onNoteStopTyping);
     };
-  }, [socket, callbacks]);
+  }, [socket]);
 
   // Emit typing status (only status, no content — content stays local until autosave)
   const emitTyping = useCallback(

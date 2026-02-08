@@ -43,6 +43,8 @@ export function SocketProvider({ children }: Readonly<{ children: React.ReactNod
   const [currentPage, internalSetCurrentPage] = useState('');
   const joinedRoomsRef = useRef<Set<string>>(new Set());
   const currentRoomRef = useRef<string | null>(null);
+  const currentPageRef = useRef(currentPage);
+  currentPageRef.current = currentPage;
   // Version counter to trigger context updates when socket changes
   const [socketVersion, setSocketVersion] = useState(0);
 
@@ -88,13 +90,13 @@ export function SocketProvider({ children }: Readonly<{ children: React.ReactNod
       if (socketRef.current && user && !joinedRoomsRef.current.has(room)) {
         socketRef.current.emit('joinRoom', {
           room,
-          user: { userId: user.id, name: user.name, avatarUrl: user.avatarUrl, currentPage: currentPage },
+          user: { userId: user.id, name: user.name, avatarUrl: user.avatarUrl, currentPage: currentPageRef.current },
         });
         joinedRoomsRef.current.add(room);
         currentRoomRef.current = room;
       }
     },
-    [user, currentPage],
+    [user],
   );
 
   const leaveRoom = useCallback((room: string) => {

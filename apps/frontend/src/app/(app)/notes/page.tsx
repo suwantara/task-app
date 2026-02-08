@@ -125,8 +125,10 @@ export default function NotesPage() {
       // eslint-disable-next-line react-hooks/exhaustive-deps
       }, [workspaceId]),
 
-      // Typing indicator: someone else is typing on a note
+      // Typing indicator: someone else is typing on the same note
       onNoteTyping: useCallback((data: { noteId: string; userId: string; name: string }) => {
+        // Only show typing for the currently selected note
+        if (data.noteId !== selectedNoteRef.current) return;
         setTypingUsers((prev) => {
           const next = new Map(prev);
           next.set(data.userId, data.name);
@@ -149,6 +151,7 @@ export default function NotesPage() {
       }, []),
 
       onNoteStopTyping: useCallback((data: { noteId: string; userId: string }) => {
+        if (data.noteId !== selectedNoteRef.current) return;
         setTypingUsers((prev) => {
           const next = new Map(prev);
           next.delete(data.userId);
@@ -189,6 +192,39 @@ export default function NotesPage() {
   useEffect(() => {
     selectedNoteRef.current = selectedNote?.id ?? null;
   }, [selectedNote]);
+
+  // Refresh: refetch notes list + selected note + update editor
+  const [refreshing, setRefreshing] = useState(false);
+  const handleRefresh = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      // Invalidate the notes list so sidebar updates
+      await qc.invalidateQueries({ queryKey: queryKeys.notes(workspaceId) });
+
+      // If a note is selected, refetch it and update editor state
+      const noteId = selectedNoteRef.current;
+      if (noteId) {
+        const freshNote = await apiClient.getNote(noteId);
+        setSelectedNote(freshNote);
+        setEditingTitle(freshNote.title);
+        const content = typeof freshNote.content === 'string'
+          ? freshNote.content
+          : JSON.stringify(freshNote.content ?? '', null, 2);
+        setEditingContent(content);
+        setSaveStatus('idle');
+        isLocalEdit.current = false;
+        hasPendingChanges.current = false;
+        if (autoSaveTimer.current) {
+          clearTimeout(autoSaveTimer.current);
+          autoSaveTimer.current = null;
+        }
+      }
+    } catch (error) {
+      console.error('Failed to refresh:', error);
+    } finally {
+      setRefreshing(false);
+    }
+  }, [workspaceId, qc]);
 
   const handleCreateNote = async (e: React.BaseSyntheticEvent) => {
     e.preventDefault();
@@ -388,10 +424,11 @@ export default function NotesPage() {
               variant="ghost"
               size="sm"
               className="h-7 w-7 p-0"
-              onClick={() => qc.invalidateQueries({ queryKey: queryKeys.notes(workspaceId) })}
+              onClick={handleRefresh}
+              disabled={refreshing}
               title="Refresh notes"
             >
-              <RefreshCw className="size-3.5" />
+              <RefreshCw className={`size-3.5 ${refreshing ? 'animate-spin' : ''}`} />
             </Button>
             <Button
               variant="ghost"
