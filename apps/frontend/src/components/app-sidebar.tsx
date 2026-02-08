@@ -93,6 +93,16 @@ export function AppSidebar() {
   const [renameValue, setRenameValue] = useState('');
   const [deletingBoard, setDeletingBoard] = useState<Board | null>(null);
 
+  // Helper to check if current user is owner (with fallback to members array)
+  const isCurrentUserOwner = (workspace: typeof activeWorkspace) => {
+    if (!workspace || !user?.id) return false;
+    // Primary check: ownerId field
+    if (workspace.ownerId === user.id) return true;
+    // Fallback: check members array for OWNER role
+    const currentMember = workspace.members?.find(m => m.userId === user.id);
+    return currentMember?.role === 'OWNER';
+  };
+
   const fetchBoards = async (workspaceId: string) => {
     try {
       const data = await apiClient.getBoards(workspaceId);
@@ -412,7 +422,7 @@ export function AppSidebar() {
           workspaceId={activeWorkspace.id}
           workspaceName={activeWorkspace.name}
           currentUserId={user?.id || ''}
-          isOwner={activeWorkspace.ownerId === user?.id}
+          isOwner={isCurrentUserOwner(activeWorkspace)}
         />
       )}
 

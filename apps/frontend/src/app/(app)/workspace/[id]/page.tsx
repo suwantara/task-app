@@ -95,6 +95,17 @@ export default function WorkspacePage() {
     }
   }, [user, authLoading, router]);
 
+  // Helper to check if current user is owner (with fallback to members array)
+  const isCurrentUserOwner = (ws: Workspace | null) => {
+    if (!ws || !user?.id) return false;
+    // Primary check: ownerId field
+    if (ws.ownerId === user.id) return true;
+    // Fallback: check members array for OWNER role
+    const currentMember = ws.members?.find(m => m.userId === user.id);
+    return currentMember?.role === 'OWNER';
+  };
+
+
   const loadWorkspaceData = async () => {
     try {
       const [workspaceData, boardsData, membersData] = await Promise.all([
@@ -362,7 +373,7 @@ export default function WorkspacePage() {
           workspaceId={workspaceId}
           workspaceName={workspace.name}
           currentUserId={user?.id || ''}
-          isOwner={workspace.ownerId === user?.id}
+          isOwner={isCurrentUserOwner(workspace)}
         />
       )}
     </div>
