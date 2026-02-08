@@ -104,6 +104,14 @@ export class CacheService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
+   * Ping Redis to check connectivity
+   */
+  async ping(): Promise<string> {
+    if (!this.isConnected()) throw new Error('Redis not connected');
+    return this.client.ping();
+  }
+
+  /**
    * Get a cached value by key
    */
   async get<T>(key: string): Promise<T | null> {

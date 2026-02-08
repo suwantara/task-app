@@ -1,398 +1,331 @@
-# Real-Time Collaborative Notes Architecture
+# Real-Time Collaborative Task & Notes App — Architecture
 
 ## Overview
 
-Arsitektur untuk aplikasi collaborative notes dengan real-time synchronization menggunakan:
-- **Frontend**: Next.js (deployed on Vercel)
-- **Backend**: Nest.js (deployed on Railway)
-- **Database**: PostgreSQL (Railway)
-- **Cache/Queue**: Redis (Railway)
-- **Real-time**: Socket.IO
-- **Editor**: Tiptap with Yjs (CRDT)
-- **State Management**: Tanstack Query
+Arsitektur lengkap untuk aplikasi task management dan collaborative notes dengan real-time synchronization:
+
+- **Frontend**: Next.js 15 (App Router, deployed on Vercel)
+- **Backend**: NestJS (deployed on Railway)
+- **Database**: PostgreSQL 15 (Railway / Docker)
+- **Cache / Pub-Sub**: Redis 7 (Railway / Docker)
+- **Real-time**: Socket.IO with Redis Adapter
+- **Editor**: Tiptap with Yjs CRDT support
+- **State Management**: TanStack Query v5
+- **ORM**: Prisma
+- **Monorepo**: npm workspaces (`apps/backend`, `apps/frontend`, `packages/shared-types`)
 
 ---
 
 ## Architecture Diagram
 
 ```
-┌─────────────────────────────────────────────────┐
-│  VERCEL (Next.js Frontend)                      │
-│  ├─ React Components                            │
-│  ├─ Tiptap Editor (with Yjs CRDT)              │
-│  ├─ Tanstack Query (REST API calls)            │
-│  └─ Socket.IO Client (WebSocket to Railway)    │
-└─────────────┬───────────────────────────────────┘
-              │
-              │ REST API (HTTP/HTTPS)
-              │ WebSocket (Socket.IO)
-              ↓
-┌──────────────────────────────────────────────────┐
-│  RAILWAY (Nest.js Backend)                       │
-│  ┌────────────────────────────────────────────┐  │
-│  │  HTTP Server (REST API)                    │  │
-│  │  • GET /notes/:id                          │  │
-│  │  • POST /notes                             │  │
-│  │  • PATCH /notes/:id                        │  │
-│  │  • GET /health                             │  │
-│  └────────────────────────────────────────────┘  │
-│  ┌────────────────────────────────────────────┐  │
-│  │  WebSocket Server (Socket.IO Gateway)     │  │
-│  │  • note:join / note:leave                  │  │
-│  │  • note:update (broadcasts)                │  │
-│  │  • cursor:update                           │  │
-│  │  • user presence tracking                  │  │
-│  └────────────────────────────────────────────┘  │
-│  ┌────────────────────────────────────────────┐  │
-│  │  Background Worker (BullMQ)                │  │
-│  │  • Processes persistence queue             │  │
-│  │  • Batch database writes                   │  │
-│  │  • Retry failed operations                 │  │
-│  └────────────────────────────────────────────┘  │
-└──────┬─────────────────────┬────────────────────┘
-       │                     │
-       ↓                     ↓
-┌──────────────┐      ┌─────────────────┐
-│    REDIS     │      │   POSTGRESQL    │
-│  (Railway)   │      │   (Railway)     │
-│              │      │                 │
-│ • Cache      │      │ • Notes         │
-│ • Presence   │      │ • Users         │
-│ • Job Queue  │      │ • Yjs State     │
-│ • Pub/Sub    │      │ • Snapshots     │
-└──────────────┘      └─────────────────┘
+┌───────────────────────────────────────────────────────┐
+│  VERCEL (Next.js Frontend)                            │
+│  ├─ React Components (App Router)                     │
+│  ├─ Tiptap Editor (HTML autosave + Yjs ready)         │
+│  ├─ TanStack Query v5 (REST API calls + cache)        │
+│  ├─ SocketProvider (Socket.IO client, auto-reconnect) │
+│  └─ Hooks: useBoardRealtime / useNoteRealtime         │
+└───────────────┬───────────────────────────────────────┘
+                │
+                │ REST API (HTTP/HTTPS)
+                │ WebSocket (Socket.IO)
+                ↓
+┌────────────────────────────────────────────────────────┐
+│  RAILWAY (NestJS Backend)                              │
+│  ┌──────────────────────────────────────────────────┐  │
+│  │  REST API (Controllers)                          │  │
+│  │  • Auth   (JWT login/register)                   │  │
+│  │  • Users  • Workspaces  • Boards                 │  │
+│  │  • Columns  • Tasks  • Notes                     │  │
+│  │  • GET /health (Redis + DB checks)               │  │
+│  └──────────────────────────────────────────────────┘  │
+│  ┌──────────────────────────────────────────────────┐  │
+│  │  RealtimeGateway (Socket.IO)                     │  │
+│  │  • joinRoom / leaveRoom (generic rooms)          │  │
+│  │  • note:typing / note:stop-typing                │  │
+│  │  • cursor:move / task:move                       │  │
+│  │  • presence:update-page                          │  │
+│  │  • yjs:join / yjs:update / yjs:awareness         │  │
+│  └──────────────────────────────────────────────────┘  │
+│  ┌──────────────────────────────────────────────────┐  │
+│  │  RealtimeService (Redis Pub/Sub Publisher)        │  │
+│  │  • Decoupled from Socket.IO — services publish,  │  │
+│  │    gateway subscribes & relays to clients         │  │
+│  └──────────────────────────────────────────────────┘  │
+│  ┌──────────────────────────────────────────────────┐  │
+│  │  NotesService (Deferred Persistence)             │  │
+│  │  • Redis buffer write (crash-safe)               │  │
+│  │  • Immediate broadcast (fast path)               │  │
+│  │  • Deferred DB flush (10s setTimeout, batched)   │  │
+│  │  • OnModuleDestroy: flush all pending buffers    │  │
+│  └──────────────────────────────────────────────────┘  │
+└──────┬──────────────────────┬─────────────────────────┘
+       │                      │
+       ↓                      ↓
+┌──────────────┐       ┌─────────────────┐
+│    REDIS     │       │   POSTGRESQL    │
+│              │       │                 │
+│ • Cache      │       │ • Users         │
+│ • Presence   │       │ • Workspaces    │
+│ • Pub/Sub    │       │ • Boards        │
+│ • Doc Buffer │       │ • Tasks/Columns │
+│ • Yjs State  │       │ • Notes         │
+│ • Socket.IO  │       │ • Labels        │
+│   Adapter    │       │ • Settings      │
+└──────────────┘       └─────────────────┘
 ```
 
 ---
 
 ## Data Flow
 
-### Real-time Update Flow
+### Notes Real-Time Update Flow
 
 ```
 User types in Tiptap Editor (Frontend)
     ↓
-Yjs generates update delta (CRDT)
+handleContentChange → setEditingContent + emit 'note:typing'
     ↓
-Socket.IO emits 'note:update' to Railway
+scheduleAutosave (2s debounce)
     ↓
-Backend receives update
+handleSaveNote → PATCH /notes/:id (REST API)
     ↓
-┌─────────────────────────────────────────┐
-│ STEP 1: IMMEDIATE BROADCAST (Priority)  │
-│ Broadcast delta to all other users      │
-│ in the same note room                   │
-│ Latency: ~10-50ms                       │
-└─────────────────────────────────────────┘
+Backend NotesService.update() receives request
     ↓
-┌─────────────────────────────────────────┐
-│ STEP 2: REDIS CACHE (Non-blocking)      │
-│ Store delta in Redis list               │
-│ Update user presence                    │
-│ Latency: ~5-20ms                        │
-└─────────────────────────────────────────┘
+┌──────────────────────────────────────────────┐
+│ STEP 1: REDIS BUFFER (crash-safe)            │
+│ Merge update with existing buffer in Redis   │
+│ Key: doc_buffer:{noteId}, TTL: 10 min        │
+│ Latency: ~5ms                                │
+└──────────────────────────────────────────────┘
     ↓
-┌─────────────────────────────────────────┐
-│ STEP 3: QUEUE FOR PERSISTENCE           │
-│ Add job to BullMQ queue                 │
-│ Deduplication by noteId + timestamp     │
-│ Latency: ~1-5ms (async)                 │
-└─────────────────────────────────────────┘
+┌──────────────────────────────────────────────┐
+│ STEP 2: OPTIMISTIC CACHE UPDATE              │
+│ Update note read-cache in Redis              │
+│ Key: note:{noteId}                           │
+│ Latency: ~5ms                                │
+└──────────────────────────────────────────────┘
     ↓
-┌─────────────────────────────────────────┐
-│ STEP 4: BACKGROUND PERSISTENCE          │
-│ Worker processes queue                  │
-│ Batch writes to PostgreSQL              │
-│ Updates Yjs state in database           │
-│ Executed: every 5-10 seconds            │
-└─────────────────────────────────────────┘
+┌──────────────────────────────────────────────┐
+│ STEP 3: IMMEDIATE BROADCAST (Priority)       │
+│ RealtimeService publishes 'note:updated'     │
+│ to workspace:{workspaceId} Redis channel     │
+│ Gateway relays to all Socket.IO clients      │
+│ Latency: ~10-50ms                            │
+└──────────────────────────────────────────────┘
+    ↓
+┌──────────────────────────────────────────────┐
+│ STEP 4: DEFERRED DB FLUSH                    │
+│ setTimeout 10 seconds (resets on each call)  │
+│ Rapid edits batch into one DB write          │
+│ OnModuleDestroy flushes all pending buffers  │
+└──────────────────────────────────────────────┘
 ```
 
-### Why This Order?
+### Board Real-Time Update Flow
 
-1. **Broadcast First**: Users see changes immediately (real-time feel)
-2. **Cache Second**: Fast recovery if user reconnects
-3. **Database Last**: Eventual consistency, optimized batch writes
+```
+User creates/updates/deletes task or column
+    ↓
+REST API mutation (TanStack Query)
+    ↓
+Service writes to PostgreSQL directly
+    ↓
+RealtimeService publishes event to Redis channel 'board:{boardId}'
+    ↓
+RealtimeGateway receives via psubscribe('board:*')
+    ↓
+Gateway emits to Socket.IO room → all clients update cache via callbacks
+```
+
+### Why This Order? (Notes)
+
+1. **Redis Buffer First**: Crash-safe — data survives if process restarts before DB flush
+2. **Broadcast Second**: Users see changes immediately (real-time feel)
+3. **Database Last**: Eventual consistency — batched writes reduce DB load
 
 ---
 
-## Frontend Implementation (Vercel - Next.js)
+## Frontend Implementation (Vercel — Next.js)
 
-### 1. Socket.IO Client Setup
+### 1. Socket Context & Provider
 
-**File**: `lib/socket.ts`
+**File**: `src/contexts/socket-context.tsx`
 
 ```typescript
-import { io, Socket } from 'socket.io-client';
+// Singleton Socket.IO connection per authenticated user
+const newSocket = io(SOCKET_URL, {
+  auth: { token },
+  transports: ['websocket'],  // WebSocket only (no polling fallback)
+});
 
-let socket: Socket | null = null;
+// Auto-join/leave rooms via context methods
+joinRoom(room)   // emits 'joinRoom' with user presence data
+leaveRoom(room)  // emits 'leaveRoom'
 
-export const getSocket = () => {
-  if (!socket) {
-    socket = io(process.env.NEXT_PUBLIC_SOCKET_URL!, {
-      path: '/socket.io',
-      transports: ['websocket', 'polling'],
-      reconnection: true,
-      reconnectionDelay: 1000,
-      reconnectionAttempts: 5,
-      autoConnect: false,
-    });
-
-    socket.on('connect', () => {
-      console.log('✅ Connected to Railway WebSocket');
-    });
-
-    socket.on('disconnect', () => {
-      console.log('❌ Disconnected from Railway');
-    });
-
-    socket.on('connect_error', (error) => {
-      console.error('Connection error:', error);
-    });
-  }
-
-  return socket;
-};
-
-export const disconnectSocket = () => {
-  if (socket) {
-    socket.disconnect();
-    socket = null;
-  }
-};
+// Presence tracking
+socket.on('presence:update', (data) => setOnlineUsers(data.users));
 ```
 
 **Key Points**:
-- Singleton pattern untuk 1 connection per client
-- Auto-reconnect dengan exponential backoff
-- Fallback ke polling jika WebSocket gagal
-- Manual connect setelah authentication
+- Socket created on auth → disposed on logout
+- `joinRoom` sends user metadata (name, avatar, current page)
+- Presence updates pushed from server on join/leave
+- `useSocket()` hook provides `{ socket, joinRoom, leaveRoom, onlineUsers }`
 
 ---
 
-### 2. Collaborative Editor Component
+### 2. Realtime Hooks
 
-**File**: `components/CollaborativeEditor.tsx`
+**File**: `src/hooks/use-realtime.ts`
 
 ```typescript
-'use client';
-
-import { useEditor, EditorContent } from '@tiptap/react';
-import StarterKit from '@tiptap/starter-kit';
-import Collaboration from '@tiptap/extension-collaboration';
-import CollaborationCursor from '@tiptap/extension-collaboration-cursor';
-import * as Y from 'yjs';
-import { useEffect, useMemo, useState } from 'react';
-import { getSocket } from '@/lib/socket';
-import { useQuery } from '@tanstack/react-query';
-
-interface CollaborativeEditorProps {
-  noteId: string;
-  userId: string;
-  userName: string;
+// Board realtime: auto-joins board:{boardId} room
+export function useBoardRealtime(boardId, callbacks) {
+  // Listens: task:created, task:updated, task:deleted, task:moved,
+  //          column:created, column:updated, cursor:update
+  return { emitTaskMove };
 }
 
-export default function CollaborativeEditor({ 
-  noteId, 
-  userId, 
-  userName 
-}: CollaborativeEditorProps) {
-  const socket = getSocket();
-  const [isConnected, setIsConnected] = useState(false);
-
-  // Yjs document untuk CRDT (Conflict-free Replicated Data Type)
-  const ydoc = useMemo(() => new Y.Doc(), []);
-  
-  // Fetch initial content via REST API
-  const { data: initialContent, isLoading } = useQuery({
-    queryKey: ['note', noteId],
-    queryFn: async () => {
-      const res = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL}/notes/${noteId}`
-      );
-      if (!res.ok) throw new Error('Failed to fetch note');
-      return res.json();
-    },
-  });
-
-  const editor = useEditor({
-    extensions: [
-      StarterKit.configure({
-        history: false, // Disable karena pakai Collaboration
-      }),
-      Collaboration.configure({
-        document: ydoc,
-      }),
-      CollaborationCursor.configure({
-        provider: null,
-        user: {
-          name: userName,
-          color: getRandomColor(userId),
-        },
-      }),
-    ],
-    content: initialContent?.content || '',
-  });
-
-  useEffect(() => {
-    if (!socket || !editor) return;
-
-    // Connect socket
-    socket.connect();
-
-    // Join room untuk note ini
-    socket.emit('note:join', { noteId, userId, userName });
-
-    // Listen untuk updates dari user lain
-    socket.on('note:updated', ({ delta, userId: senderId }) => {
-      if (senderId !== userId) {
-        // Apply update dari user lain ke local Yjs doc
-        Y.applyUpdate(ydoc, new Uint8Array(delta));
-      }
-    });
-
-    // Listen untuk cursor updates
-    socket.on('cursor:update', ({ userId: cursorUserId, position }) => {
-      // Update cursor position di editor
-      // Implementation depends on your UI needs
-    });
-
-    // Listen untuk user presence
-    socket.on('user:joined', ({ userId, userName }) => {
-      console.log(`${userName} joined the note`);
-    });
-
-    socket.on('user:left', ({ userId }) => {
-      console.log(`User ${userId} left the note`);
-    });
-
-    socket.on('users:list', (users) => {
-      console.log('Active users:', users);
-    });
-
-    // Kirim local changes ke server
-    ydoc.on('update', (update: Uint8Array) => {
-      socket.emit('note:update', {
-        noteId,
-        delta: Array.from(update),
-        userId,
-      });
-    });
-
-    setIsConnected(true);
-
-    return () => {
-      socket.emit('note:leave', { noteId, userId });
-      socket.off('note:updated');
-      socket.off('cursor:update');
-      socket.off('user:joined');
-      socket.off('user:left');
-      socket.off('users:list');
-      ydoc.off('update');
-    };
-  }, [socket, editor, noteId, userId, userName, ydoc]);
-
-  // Auto-save backup via REST API
-  useEffect(() => {
-    if (!editor) return;
-
-    const saveTimer = setTimeout(() => {
-      const content = editor.getJSON();
-      
-      fetch(`${process.env.NEXT_PUBLIC_API_URL}/notes/${noteId}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ content }),
-      }).catch(err => console.error('Auto-save failed:', err));
-    }, 5000);
-
-    return () => clearTimeout(saveTimer);
-  }, [editor?.state.doc, noteId]);
-
-  if (isLoading) return <div>Loading...</div>;
-
-  return (
-    <div className="border rounded-lg p-4">
-      <div className="flex items-center gap-2 mb-4">
-        <div 
-          className={`w-2 h-2 rounded-full ${
-            isConnected ? 'bg-green-500' : 'bg-red-500'
-          }`} 
-        />
-        <span className="text-sm text-gray-600">
-          {isConnected ? 'Connected' : 'Connecting...'}
-        </span>
-      </div>
-      <EditorContent editor={editor} />
-    </div>
-  );
-}
-
-function getRandomColor(userId: string): string {
-  const colors = ['#ff6b6b', '#4ecdc4', '#45b7d1', '#f9ca24', '#6c5ce7'];
-  const hash = userId.split('').reduce(
-    (acc, char) => acc + char.charCodeAt(0), 
-    0
-  );
-  return colors[hash % colors.length];
+// Note realtime: auto-joins workspace:{workspaceId} room
+export function useNoteRealtime(workspaceId, callbacks) {
+  // Listens: note:created, note:updated, note:deleted,
+  //          note:typing, note:stop-typing
+  return { emitTyping, emitStopTyping };
 }
 ```
 
 **Key Concepts**:
-- **Yjs (CRDT)**: Automatic conflict resolution
-- **Optimistic Updates**: Local changes appear immediately
-- **Delta Sync**: Only send changes, not full document
-- **Presence Awareness**: Show who's online
-- **Backup Saves**: Periodic REST API saves as fallback
+- Hooks auto-join/leave rooms based on prop changes
+- Callbacks update TanStack Query cache directly (no refetch)
+- Typing indicators: emit `note:typing` on keystroke, `note:stop-typing` on save
+- `emitTaskMove` broadcasts optimistic drag-drop to other clients
 
 ---
 
-### 3. Environment Variables
+### 3. Notes Page (Autosave Architecture)
 
-**File**: `.env.local` (Vercel)
+**File**: `src/app/(app)/notes/page.tsx`
 
-```bash
-NEXT_PUBLIC_API_URL=https://your-backend.railway.app
-NEXT_PUBLIC_SOCKET_URL=https://your-backend.railway.app
+```typescript
+// Stale-closure avoidance pattern: refs always hold latest values
+const editingContentRef = useRef(editingContent);
+editingContentRef.current = editingContent;
+const editingTitleRef = useRef(editingTitle);
+editingTitleRef.current = editingTitle;
+
+// Autosave: 2-second debounce after last keystroke
+const AUTOSAVE_INTERVAL = 2000;
+
+handleContentChange → setEditingContent() + emit typing + scheduleAutosave()
+scheduleAutosave   → clearTimeout + setTimeout(handleSaveNote, 2000)
+handleSaveNote     → reads from refs (not closure) → mutateAsync → emitStopTyping
+
+// Remote updates: onNoteUpdated callback
+// Skip if isLocalEdit.current === true (avoid echoing own changes)
+// Otherwise update selectedNote, editingTitle, editingContent
+
+// Typing indicator: Map<userId, name> with 3-second auto-clear
 ```
 
-**Vercel Dashboard Settings**:
-- Add these in Project Settings → Environment Variables
-- Apply to Production, Preview, and Development
+**Save Status UI**:
+- `saving` → Loader2 spinner + "Saving"
+- `saved` → Check icon + "Saved" (green, auto-clears after 2s)
+- `unsaved` → Dot indicator
 
 ---
 
-## Backend Implementation (Railway - Nest.js)
+### 4. Tiptap Editor (Yjs-Ready)
+
+**File**: `src/components/tiptap-templates/simple/simple-editor.tsx`
+
+```typescript
+interface SimpleEditorProps {
+  content?: string;
+  onChange?: (content: string) => void;
+  placeholder?: string;
+  // Optional Yjs collaboration props
+  ydoc?: Y.Doc;
+  awareness?: Awareness;
+  user?: { name: string; color: string };
+}
+
+// Conditionally includes Collaboration + CollaborationCursor extensions
+// When ydoc is NOT provided → uses HTML content mode (current notes page)
+// When ydoc IS provided → uses CRDT mode (history disabled, cursor sharing)
+```
+
+**Current State**: Notes page uses HTML autosave mode (no Yjs props passed). Yjs integration is available in the gateway and editor for future use.
+
+---
+
+### 5. Environment Variables
+
+```bash
+# .env.local (Vercel)
+NEXT_PUBLIC_API_URL=https://your-backend.railway.app
+NEXT_PUBLIC_WS_URL=https://your-backend.railway.app
+```
+
+---
+
+## Backend Implementation (Railway — NestJS)
 
 ### Project Structure
 
 ```
-src/
-├── main.ts                           # Bootstrap
-├── app.module.ts                     # Root module
+apps/backend/src/
+├── main.ts                        # Bootstrap: CORS, Redis adapter, Swagger
+├── app.module.ts                  # Root module
+├── app.controller.ts              # GET / and GET /health
+├── app.service.ts                 # Health check logic (Redis + DB)
+├── auth/
+│   ├── auth.module.ts
+│   ├── auth.controller.ts         # POST /auth/login, /auth/register
+│   ├── auth.service.ts            # JWT + bcrypt
+│   ├── dto/                       # LoginDto, RegisterDto
+│   └── strategies/                # JwtStrategy
+├── users/
+│   ├── users.module.ts
+│   ├── users.controller.ts        # User profile + settings
+│   └── users.service.ts
+├── workspaces/
+│   ├── workspaces.module.ts
+│   ├── workspaces.controller.ts   # CRUD + join codes + invite links
+│   └── workspaces.service.ts
+├── boards/
+│   ├── boards.module.ts
+│   ├── boards.controller.ts       # CRUD boards
+│   └── boards.service.ts
+├── columns/
+│   ├── columns.module.ts
+│   ├── columns.controller.ts      # CRUD + reorder columns
+│   └── columns.service.ts
+├── tasks/
+│   ├── tasks.module.ts
+│   ├── tasks.controller.ts        # CRUD + move tasks
+│   └── tasks.service.ts
 ├── notes/
 │   ├── notes.module.ts
-│   ├── notes.controller.ts           # REST endpoints
-│   ├── notes.service.ts              # Business logic
-│   ├── notes.gateway.ts              # Socket.IO gateway
-│   └── dto/
-│       ├── create-note.dto.ts
-│       └── update-note.dto.ts
-├── redis/
-│   ├── redis.module.ts
-│   ├── redis.service.ts              # Redis operations
-│   └── redis-io.adapter.ts           # Multi-instance support
-├── queue/
-│   ├── queue.module.ts
-│   ├── queue.service.ts              # BullMQ service
-│   └── processors/
-│       └── note-persistence.processor.ts
-├── database/
-│   ├── prisma/
-│   │   └── schema.prisma
-│   └── prisma.service.ts
-└── health/
-    └── health.controller.ts          # Health checks
+│   ├── notes.controller.ts        # CRUD notes
+│   ├── notes.service.ts           # Redis buffer + deferred DB flush
+│   └── dto/                       # CreateNoteDto, UpdateNoteDto
+├── realtime/
+│   ├── realtime.module.ts
+│   ├── realtime.gateway.ts        # Socket.IO gateway (all WS events)
+│   ├── realtime.service.ts        # Redis pub/sub publisher
+│   └── redis-io.adapter.ts        # Socket.IO Redis adapter
+├── cache/
+│   ├── cache.module.ts            # @Global()
+│   └── cache.service.ts           # Redis wrapper (ioredis)
+├── prisma/
+│   ├── prisma.module.ts           # @Global()
+│   └── prisma.service.ts          # PrismaClient
+└── common/
+    ├── common.module.ts           # @Global()
+    ├── permissions.service.ts     # Workspace/Board/Note access validation
+    └── decorators/                # @CurrentUser, @Public
 ```
 
 ---
@@ -402,650 +335,291 @@ src/
 **File**: `src/main.ts`
 
 ```typescript
-import { NestFactory } from '@nestjs/core';
-import { AppModule } from './app.module';
-import { ConfigService } from '@nestjs/config';
-import { RedisIoAdapter } from './redis/redis-io.adapter';
-
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
-  const configService = app.get(ConfigService);
 
-  // CORS untuk Vercel
-  app.enableCors({
-    origin: [
-      'http://localhost:3000',
-      'https://your-app.vercel.app',
-      /\.vercel\.app$/, // All preview deployments
-    ],
-    credentials: true,
-  });
+  // CORS (allow all origins for dev, configure for prod)
+  app.enableCors({ origin: true, credentials: true });
 
-  // Redis adapter untuk multi-instance Socket.IO
-  const redisIoAdapter = new RedisIoAdapter(app);
-  await redisIoAdapter.connectToRedis();
-  app.useWebSocketAdapter(redisIoAdapter);
+  // Redis adapter for Socket.IO (multi-instance scaling)
+  if (process.env.REDIS_URL) {
+    const redisIoAdapter = new RedisIoAdapter(app);
+    await redisIoAdapter.connectToRedis();
+    app.useWebSocketAdapter(redisIoAdapter);
+  }
 
-  const port = configService.get('PORT') || 3000;
-  await app.listen(port, '0.0.0.0'); // Important: 0.0.0.0 for Railway
+  // Global validation (whitelist + transform)
+  app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
 
-  console.log(`🚀 Server running on port ${port}`);
-  console.log(`🔌 WebSocket ready`);
+  // Swagger at /api
+  SwaggerModule.setup('api', app, document);
+
+  await app.listen(port, '0.0.0.0'); // 0.0.0.0 for Railway/Docker
 }
-
-bootstrap();
 ```
-
-**Key Points**:
-- CORS includes all Vercel preview deployments
-- Redis adapter enables horizontal scaling
-- Listen on `0.0.0.0` for Railway networking
 
 ---
 
-### 2. Redis Adapter (Multi-Instance Support)
+### 2. Redis Adapter (Multi-Instance Socket.IO)
 
-**File**: `src/redis/redis-io.adapter.ts`
+**File**: `src/realtime/redis-io.adapter.ts`
 
 ```typescript
-import { IoAdapter } from '@nestjs/platform-socket.io';
-import { ServerOptions } from 'socket.io';
-import { createAdapter } from '@socket.io/redis-adapter';
-import { createClient } from 'redis';
-import { INestApplicationContext } from '@nestjs/common';
-
 export class RedisIoAdapter extends IoAdapter {
-  private adapterConstructor: ReturnType<typeof createAdapter>;
+  private adapterConstructor: ReturnType<typeof createAdapter> | null = null;
 
   async connectToRedis(): Promise<void> {
-    const pubClient = createClient({ 
-      url: process.env.REDIS_URL 
+    const pubClient = new Redis(redisUrl, {
+      retryStrategy: (times) => times > 3 ? null : Math.min(times * 200, 2000),
+      lazyConnect: true,
     });
+    await pubClient.connect();
     const subClient = pubClient.duplicate();
-
-    await Promise.all([
-      pubClient.connect(),
-      subClient.connect(),
-    ]);
-
+    await subClient.connect();
     this.adapterConstructor = createAdapter(pubClient, subClient);
-    console.log('✅ Redis adapter connected');
   }
 
-  createIOServer(port: number, options?: ServerOptions): any {
+  createIOServer(port, options) {
     const server = super.createIOServer(port, options);
-    server.adapter(this.adapterConstructor);
-    return server;
+    if (this.adapterConstructor) server.adapter(this.adapterConstructor);
+    return server;  // Falls back to in-memory if Redis fails
   }
 }
 ```
 
 **Why This Matters**:
-- Enables multiple Railway instances
-- Broadcasts work across all servers
-- Redis Pub/Sub for message distribution
+- Enables horizontal scaling (multiple Railway instances)
+- Socket.IO messages broadcast across all servers via Redis pub/sub
+- Graceful fallback to in-memory if Redis is unavailable
 
 ---
 
-### 3. WebSocket Gateway
+### 3. RealtimeGateway (Socket.IO Events)
 
-**File**: `src/notes/notes.gateway.ts`
+**File**: `src/realtime/realtime.gateway.ts`
 
 ```typescript
-import {
-  WebSocketGateway,
-  WebSocketServer,
-  SubscribeMessage,
-  MessageBody,
-  ConnectedSocket,
-  OnGatewayConnection,
-  OnGatewayDisconnect,
-} from '@nestjs/websockets';
-import { Server, Socket } from 'socket.io';
-import { Logger, UseGuards } from '@nestjs/common';
-import { RedisService } from '../redis/redis.service';
-import { QueueService } from '../queue/queue.service';
+@WebSocketGateway({ cors: { origin: true, credentials: true } })
+export class RealtimeGateway
+  implements OnGatewayConnection, OnGatewayDisconnect, OnGatewayInit {
 
-@WebSocketGateway({
-  cors: {
-    origin: [
-      'http://localhost:3000',
-      'https://your-app.vercel.app',
-      /\.vercel\.app$/,
-    ],
-    credentials: true,
-  },
-  transports: ['websocket', 'polling'],
-})
-export class NotesGateway 
-  implements OnGatewayConnection, OnGatewayDisconnect {
-  
-  @WebSocketServer()
-  server: Server;
-
-  private logger = new Logger('NotesGateway');
-
-  constructor(
-    private redisService: RedisService,
-    private queueService: QueueService,
-  ) {}
-
-  handleConnection(client: Socket) {
-    this.logger.log(`Client connected: ${client.id}`);
-  }
-
-  handleDisconnect(client: Socket) {
-    this.logger.log(`Client disconnected: ${client.id}`);
-    // Cleanup user presence
-  }
-
-  @SubscribeMessage('note:join')
-  async handleJoinNote(
-    @MessageBody() data: { 
-      noteId: string; 
-      userId: string; 
-      userName: string 
-    },
-    @ConnectedSocket() client: Socket,
-  ) {
-    const room = `note:${data.noteId}`;
-    
-    // Join Socket.IO room
-    await client.join(room);
-    
-    // Update presence in Redis
-    await this.redisService.addUserToNote(data.noteId, {
-      userId: data.userId,
-      userName: data.userName,
-      socketId: client.id,
+  // On init: subscribe to Redis pub/sub channels
+  async afterInit() {
+    await this.cache.psubscribe('board:*', (channel, msg) => {
+      this.server.to(channel).emit(msg.event, msg.data);
     });
-
-    // Notify room
-    client.to(room).emit('user:joined', {
-      userId: data.userId,
-      userName: data.userName,
-    });
-
-    // Send active users to joining client
-    const activeUsers = await this.redisService.getNoteUsers(data.noteId);
-    client.emit('users:list', activeUsers);
-
-    this.logger.log(`User ${data.userName} joined note ${data.noteId}`);
-  }
-
-  @SubscribeMessage('note:leave')
-  async handleLeaveNote(
-    @MessageBody() data: { noteId: string; userId: string },
-    @ConnectedSocket() client: Socket,
-  ) {
-    const room = `note:${data.noteId}`;
-    
-    await client.leave(room);
-    await this.redisService.removeUserFromNote(data.noteId, data.userId);
-
-    client.to(room).emit('user:left', { userId: data.userId });
-  }
-
-  @SubscribeMessage('note:update')
-  async handleNoteUpdate(
-    @MessageBody() data: { 
-      noteId: string; 
-      delta: number[]; 
-      userId: string 
-    },
-    @ConnectedSocket() client: Socket,
-  ) {
-    const room = `note:${data.noteId}`;
-
-    // PRIORITY 1: Broadcast immediately (fastest path)
-    client.to(room).emit('note:updated', {
-      delta: data.delta,
-      userId: data.userId,
-      timestamp: Date.now(),
-    });
-
-    // PRIORITY 2: Cache in Redis (non-blocking)
-    this.redisService
-      .cacheNoteDelta(data.noteId, data.delta)
-      .catch(err => {
-        this.logger.error(`Redis cache error: ${err.message}`);
-      });
-
-    // PRIORITY 3: Queue for database (background)
-    this.queueService
-      .addNotePersistenceJob({
-        noteId: data.noteId,
-        delta: data.delta,
-        userId: data.userId,
-        timestamp: Date.now(),
-      })
-      .catch(err => {
-        this.logger.error(`Queue error: ${err.message}`);
-      });
-
-    return { success: true };
-  }
-
-  @SubscribeMessage('cursor:update')
-  handleCursorUpdate(
-    @MessageBody() data: { 
-      noteId: string; 
-      userId: string; 
-      position: any 
-    },
-    @ConnectedSocket() client: Socket,
-  ) {
-    const room = `note:${data.noteId}`;
-    
-    // Broadcast cursor (no persistence needed)
-    client.to(room).emit('cursor:update', {
-      userId: data.userId,
-      position: data.position,
+    await this.cache.psubscribe('workspace:*', (channel, msg) => {
+      this.server.to(channel).emit(msg.event, msg.data);
     });
   }
+
+  // Generic room management with presence tracking (Redis hash)
+  @SubscribeMessage('joinRoom')  → join room + store presence in Redis
+  @SubscribeMessage('leaveRoom') → leave room + remove presence
+
+  // Ephemeral events (no persistence)
+  @SubscribeMessage('cursor:move')         → broadcast cursor to room
+  @SubscribeMessage('task:move')            → broadcast drag-drop to room
+  @SubscribeMessage('note:typing')          → broadcast typing indicator
+  @SubscribeMessage('note:stop-typing')     → broadcast stop-typing
+  @SubscribeMessage('presence:update-page') → update user's current page
+
+  // Yjs Collaborative Editing (state stored in Redis binary buffer)
+  @SubscribeMessage('yjs:join')      → join yjs room, send current doc state
+  @SubscribeMessage('yjs:update')    → merge update into Redis, broadcast delta
+  @SubscribeMessage('yjs:awareness') → relay cursor/selection awareness
+  @SubscribeMessage('yjs:leave')     → leave yjs room, cleanup tracking
 }
 ```
 
-**Event Flow**:
-1. `note:join` → User enters note, gets presence list
-2. `note:update` → Delta broadcast → Redis cache → DB queue
-3. `cursor:update` → Real-time cursor sharing (ephemeral)
-4. `note:leave` → Cleanup presence
+**Event Summary**:
+
+| Event | Direction | Description |
+|---|---|---|
+| `joinRoom` | Client → Server | Join Socket.IO room + register presence |
+| `leaveRoom` | Client → Server | Leave room + remove presence |
+| `presence:update` | Server → Client | Updated presence list for room |
+| `note:typing` | Client ↔ Server | Typing indicator (no content) |
+| `note:stop-typing` | Client ↔ Server | Stop typing indicator |
+| `note:created` | Server → Client | New note created (via pub/sub) |
+| `note:updated` | Server → Client | Note content updated (via pub/sub) |
+| `note:deleted` | Server → Client | Note deleted (via pub/sub) |
+| `task:created` | Server → Client | Task CRUD events (via pub/sub) |
+| `task:updated` | Server → Client | |
+| `task:deleted` | Server → Client | |
+| `task:move` | Client → Server | Optimistic drag-drop broadcast |
+| `task:moved` | Server → Client | |
+| `column:created` | Server → Client | Column events (via pub/sub) |
+| `column:updated` | Server → Client | |
+| `cursor:move` | Client → Server | Cursor position on board |
+| `cursor:update` | Server → Client | |
+| `yjs:join` | Client → Server | Join Yjs collaboration room |
+| `yjs:sync` | Server → Client | Initial doc state from Redis |
+| `yjs:update` | Client ↔ Server | Yjs delta broadcast |
+| `yjs:awareness` | Client ↔ Server | Cursor/selection awareness |
+| `yjs:leave` | Client → Server | Leave Yjs room |
 
 ---
 
-### 4. Redis Service
+### 4. RealtimeService (Pub/Sub Publisher)
 
-**File**: `src/redis/redis.service.ts`
+**File**: `src/realtime/realtime.service.ts`
 
 ```typescript
-import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
-import { Redis } from 'ioredis';
-import { ConfigService } from '@nestjs/config';
-
 @Injectable()
-export class RedisService implements OnModuleInit {
-  public client: Redis;
-  private logger = new Logger('RedisService');
+export class RealtimeService {
+  constructor(private readonly cache: CacheService) {}
 
-  constructor(private configService: ConfigService) {
-    this.client = new Redis(this.configService.get('REDIS_URL'), {
-      maxRetriesPerRequest: 3,
-      retryStrategy: (times) => {
-        const delay = Math.min(times * 50, 2000);
-        return delay;
-      },
-    });
-  }
+  // Board events → channel: board:{boardId}
+  emitTaskCreated(boardId, task)     → cache.publish('board:{id}', { event, data })
+  emitTaskUpdated(boardId, task)
+  emitTaskDeleted(boardId, taskId)
+  emitColumnCreated(boardId, column)
+  emitColumnUpdated(boardId, column)
 
-  async onModuleInit() {
-    this.client.on('connect', () => {
-      this.logger.log('✅ Redis connected');
-    });
+  // Note events → channel: workspace:{workspaceId}
+  emitNoteCreated(workspaceId, note)
+  emitNoteUpdated(workspaceId, note)
+  emitNoteDeleted(workspaceId, noteId)
 
-    this.client.on('error', (err) => {
-      this.logger.error(`❌ Redis error: ${err.message}`);
-    });
-  }
-
-  // ============ USER PRESENCE ============
-  
-  async addUserToNote(noteId: string, user: {
-    userId: string;
-    userName: string;
-    socketId: string;
-  }) {
-    const key = `note:${noteId}:users`;
-    await this.client.hset(key, user.userId, JSON.stringify(user));
-    await this.client.expire(key, 3600); // TTL 1 hour
-  }
-
-  async removeUserFromNote(noteId: string, userId: string) {
-    const key = `note:${noteId}:users`;
-    await this.client.hdel(key, userId);
-  }
-
-  async getNoteUsers(noteId: string) {
-    const key = `note:${noteId}:users`;
-    const users = await this.client.hgetall(key);
-    return Object.values(users).map(u => JSON.parse(u));
-  }
-
-  // ============ DELTA CACHING ============
-
-  async cacheNoteDelta(noteId: string, delta: number[]) {
-    const key = `note:${noteId}:deltas`;
-    
-    await this.client.lpush(key, JSON.stringify({
-      delta,
-      timestamp: Date.now(),
-    }));
-    
-    // Keep last 100 deltas
-    await this.client.ltrim(key, 0, 99);
-    
-    // TTL 30 minutes
-    await this.client.expire(key, 1800);
-  }
-
-  async getCachedDeltas(noteId: string) {
-    const key = `note:${noteId}:deltas`;
-    const deltas = await this.client.lrange(key, 0, -1);
-    return deltas.map(d => JSON.parse(d));
-  }
-
-  // ============ CONTENT SNAPSHOT ============
-
-  async setNoteContent(noteId: string, content: any) {
-    const key = `note:${noteId}:content`;
-    await this.client.set(
-      key, 
-      JSON.stringify(content), 
-      'EX', 
-      3600 // 1 hour TTL
-    );
-  }
-
-  async getNoteContent(noteId: string) {
-    const key = `note:${noteId}:content`;
-    const content = await this.client.get(key);
-    return content ? JSON.parse(content) : null;
-  }
-
-  // ============ RATE LIMITING ============
-
-  async checkRateLimit(
-    userId: string, 
-    limit: number = 50, 
-    windowSeconds: number = 1
-  ): Promise<boolean> {
-    const key = `rate-limit:${userId}`;
-    const current = await this.client.incr(key);
-    
-    if (current === 1) {
-      await this.client.expire(key, windowSeconds);
-    }
-    
-    return current <= limit;
-  }
+  // Presence
+  emitPresenceUpdate(room, data)
 }
 ```
 
-**Redis Data Structure**:
-- `note:{noteId}:users` → Hash of active users
-- `note:{noteId}:deltas` → List of recent deltas
-- `note:{noteId}:content` → Full content snapshot
-- `rate-limit:{userId}` → Rate limiting counter
+**Design Principle**: Services only publish to Redis channels — they never import Socket.IO. The gateway subscribes and relays. This decoupling enables:
+- Cross-instance event propagation
+- Easy testing (mock CacheService)
+- Clean separation of business logic and transport
 
 ---
 
-### 5. Queue Service (BullMQ)
-
-**File**: `src/queue/queue.service.ts`
-
-```typescript
-import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
-import { Queue } from 'bullmq';
-import { ConfigService } from '@nestjs/config';
-
-@Injectable()
-export class QueueService implements OnModuleInit {
-  private notePersistenceQueue: Queue;
-  private logger = new Logger('QueueService');
-
-  constructor(private configService: ConfigService) {}
-
-  async onModuleInit() {
-    const redisUrl = this.configService.get('REDIS_URL');
-    const redisConnection = this.parseRedisUrl(redisUrl);
-
-    this.notePersistenceQueue = new Queue('note-persistence', {
-      connection: redisConnection,
-      defaultJobOptions: {
-        attempts: 3,
-        backoff: {
-          type: 'exponential',
-          delay: 2000,
-        },
-        removeOnComplete: {
-          count: 100,
-          age: 3600, // 1 hour
-        },
-        removeOnFail: {
-          count: 500,
-        },
-      },
-    });
-
-    this.logger.log('✅ BullMQ Queue initialized');
-  }
-
-  async addNotePersistenceJob(data: {
-    noteId: string;
-    delta: number[];
-    userId: string;
-    timestamp: number;
-  }) {
-    // Job deduplication: same noteId within 5 second window
-    const jobId = `${data.noteId}-${Math.floor(data.timestamp / 5000)}`;
-    
-    await this.notePersistenceQueue.add(
-      'persist-note',
-      data,
-      { jobId }
-    );
-  }
-
-  private parseRedisUrl(url: string) {
-    // Parse Railway Redis URL format
-    // redis://default:password@host:port
-    const urlObj = new URL(url);
-    return {
-      host: urlObj.hostname,
-      port: parseInt(urlObj.port),
-      password: urlObj.password,
-      username: urlObj.username || 'default',
-    };
-  }
-}
-```
-
-**Queue Strategy**:
-- Deduplicate jobs by `noteId` + 5-second window
-- Prevents duplicate DB writes for rapid edits
-- Retry failed jobs with exponential backoff
-
----
-
-### 6. Queue Processor (Worker)
-
-**File**: `src/queue/processors/note-persistence.processor.ts`
-
-```typescript
-import { Processor, WorkerHost } from '@nestjs/bullmq';
-import { Job } from 'bullmq';
-import { Logger } from '@nestjs/common';
-import { NotesService } from '../../notes/notes.service';
-import * as Y from 'yjs';
-
-@Processor('note-persistence')
-export class NotePersistenceProcessor extends WorkerHost {
-  private logger = new Logger('NotePersistenceProcessor');
-
-  constructor(private notesService: NotesService) {
-    super();
-  }
-
-  async process(job: Job) {
-    const { noteId, delta, userId, timestamp } = job.data;
-
-    try {
-      this.logger.log(`Processing persistence for note: ${noteId}`);
-
-      // Convert delta array back to Uint8Array
-      const update = new Uint8Array(delta);
-
-      // Apply update to database
-      await this.notesService.applyUpdate(noteId, update, userId);
-
-      this.logger.log(`✅ Note ${noteId} persisted at ${new Date(timestamp).toISOString()}`);
-      
-      return { 
-        success: true, 
-        noteId, 
-        timestamp,
-        processingTime: Date.now() - timestamp 
-      };
-    } catch (error) {
-      this.logger.error(
-        `❌ Failed to persist note ${noteId}: ${error.message}`
-      );
-      throw error; // Triggers retry
-    }
-  }
-}
-```
-
----
-
-### 7. Notes Service (Business Logic)
+### 5. NotesService (Deferred Persistence)
 
 **File**: `src/notes/notes.service.ts`
 
 ```typescript
-import { Injectable, NotFoundException } from '@nestjs/common';
-import { PrismaService } from '../database/prisma.service';
-import * as Y from 'yjs';
-
 @Injectable()
-export class NotesService {
-  constructor(private prisma: PrismaService) {}
+export class NotesService implements OnModuleDestroy {
+  private readonly dbFlushTimers = new Map<string, ReturnType<typeof setTimeout>>();
+  private readonly DB_FLUSH_DELAY = 10_000; // 10 seconds
 
-  async applyUpdate(
-    noteId: string, 
-    update: Uint8Array, 
-    userId: string
-  ) {
-    // Get current note
-    const note = await this.prisma.note.findUnique({
-      where: { id: noteId },
-    });
-
-    if (!note) {
-      throw new NotFoundException(`Note ${noteId} not found`);
-    }
-
-    // Create Yjs document
-    const ydoc = new Y.Doc();
-    
-    // Apply existing state if available
-    if (note.yjsState) {
-      const existingState = Buffer.from(note.yjsState, 'base64');
-      Y.applyUpdate(ydoc, existingState);
-    }
-    
-    // Apply new update
-    Y.applyUpdate(ydoc, update);
-
-    // Encode updated state
-    const newState = Y.encodeStateAsUpdate(ydoc);
-    const base64State = Buffer.from(newState).toString('base64');
-
-    // Save to database
-    await this.prisma.note.update({
-      where: { id: noteId },
-      data: {
-        yjsState: base64State,
-        updatedAt: new Date(),
-        lastEditedBy: userId,
-      },
-    });
-
-    // Check if snapshot needed
-    await this.createSnapshotIfNeeded(noteId);
-  }
-
-  private async createSnapshotIfNeeded(noteId: string) {
-    // Create full content snapshot every 100 updates
-    const updateCount = await this.prisma.noteUpdate.count({
-      where: { noteId },
-    });
-
-    if (updateCount % 100 === 0) {
-      const note = await this.prisma.note.findUnique({
-        where: { id: noteId },
-      });
-
-      if (note?.yjsState) {
-        const ydoc = new Y.Doc();
-        Y.applyUpdate(
-          ydoc, 
-          Buffer.from(note.yjsState, 'base64')
-        );
-
-        // Save snapshot
-        await this.prisma.noteSnapshot.create({
-          data: {
-            noteId,
-            content: ydoc.toJSON(),
-            createdAt: new Date(),
-          },
-        });
-      }
+  // Graceful shutdown: flush all pending buffers
+  async onModuleDestroy() {
+    for (const [noteId, timer] of this.dbFlushTimers) {
+      clearTimeout(timer);
+      await this.flushToDatabase(noteId);
     }
   }
 
-  async getNote(noteId: string) {
-    const note = await this.prisma.note.findUnique({
-      where: { id: noteId },
-      include: {
-        owner: true,
-      },
-    });
+  async update(id, userId, dto) {
+    // 1. Merge with Redis buffer (crash-safe)
+    const bufferKey = `doc_buffer:${id}`;
+    const merged = { ...existingBuffer, ...dto, workspaceId };
+    await cache.set(bufferKey, merged, 600); // 10 min TTL
 
-    if (!note) {
-      throw new NotFoundException(`Note ${noteId} not found`);
-    }
+    // 2. Update optimistic read-cache
+    await cache.set(`note:${id}`, optimistic);
 
-    // Reconstruct content from Yjs state
-    let content = null;
-    if (note.yjsState) {
-      const ydoc = new Y.Doc();
-      Y.applyUpdate(
-        ydoc, 
-        Buffer.from(note.yjsState, 'base64')
-      );
-      content = ydoc.toJSON();
-    }
+    // 3. Broadcast immediately via pub/sub
+    realtime.emitNoteUpdated(workspaceId, { id, ...dto, updatedAt: now });
 
-    return {
-      id: note.id,
-      title: note.title,
-      content,
-      yjsState: note.yjsState,
-      owner: note.owner,
-      updatedAt: note.updatedAt,
-      createdAt: note.createdAt,
-    };
+    // 4. Schedule deferred DB write (resets timer on rapid edits)
+    this.scheduleDatabaseFlush(id, workspaceId);
   }
 
-  async createNote(ownerId: string, title?: string) {
-    return this.prisma.note.create({
-      data: {
-        title: title || 'Untitled',
-        ownerId,
-        yjsState: null,
-      },
-    });
+  async findOne(id, userId) {
+    // Merge DB data with pending Redis buffer
+    const buffer = await cache.get(`doc_buffer:${id}`);
+    return buffer ? { ...dbNote, ...buffer } : dbNote;
+  }
+
+  private async flushToDatabase(noteId) {
+    // Read buffer → Prisma update → clear buffer → invalidate list cache
   }
 }
 ```
 
-**Yjs State Management**:
-- Store Yjs binary state as base64 in PostgreSQL
-- Apply incremental updates to existing state
-- Create periodic snapshots for recovery
-- Reconstruct content on-demand from state
+**Key Design Decisions**:
+- `setTimeout` (not BullMQ) — simpler, sufficient for single-instance deployments
+- Timer resets on each call → rapid edits batch into one DB write
+- `findOne` merges Redis buffer with DB data → always returns latest
+- `OnModuleDestroy` ensures no data loss on shutdown
+
+---
+
+### 6. CacheService (Redis Wrapper)
+
+**File**: `src/cache/cache.service.ts`
+
+```typescript
+@Global() @Injectable()
+export class CacheService implements OnModuleInit, OnModuleDestroy {
+  private client: Redis;          // ioredis main client
+  private subClient: Redis;       // Dedicated subscriber client
+  private prefix = 'task-app:';   // Key namespace
+  private defaultTTL = 300;       // 5 minutes
+
+  // Basic cache
+  get<T>(key)                → JSON parse from Redis
+  set(key, value, ttl?)      → JSON serialize to Redis with TTL
+  del(key)                   → Delete key
+  delPattern(pattern)        → Delete by glob pattern (SCAN + DEL)
+  getOrSet<T>(key, factory)  → Cache-aside pattern
+
+  // Pub/Sub
+  publish(channel, data)     → Publish JSON to prefixed channel
+  psubscribe(pattern, handler) → Pattern subscribe (e.g., 'board:*')
+
+  // Hash (used for presence)
+  hset(key, field, value)    → Set hash field
+  hdel(key, field)           → Delete hash field
+  hgetall(key)               → Get all hash fields
+
+  // Sets (used for room tracking)
+  sadd(key, member)          → Add to set
+  srem(key, member)          → Remove from set
+  smembers(key)              → Get all set members
+
+  // Binary (used for Yjs state)
+  setBuffer(key, buffer, ttl?) → Store raw binary
+  getBuffer(key)               → Retrieve raw binary
+
+  // Health
+  ping()                     → Redis PING
+}
+```
+
+**Redis Key Patterns**:
+
+| Key Pattern | Type | Purpose | TTL |
+|---|---|---|---|
+| `task-app:notes:workspace:{id}` | String (JSON) | Notes list cache | 5 min |
+| `task-app:note:{id}` | String (JSON) | Single note cache | 5 min |
+| `task-app:doc_buffer:{id}` | String (JSON) | Pending note update buffer | 10 min |
+| `task-app:presence:{room}` | Hash | Active users in room | — |
+| `task-app:socket:rooms:{socketId}` | Set | Rooms a socket has joined | — |
+| `task-app:yjs:doc:{noteId}` | Buffer | Yjs binary document state | 24 hr |
+| `task-app:board:*` | Pub/Sub channel | Board events | — |
+| `task-app:workspace:*` | Pub/Sub channel | Note/workspace events | — |
+
+---
+
+### 7. Health Check
+
+**File**: `src/app.controller.ts` + `src/app.service.ts`
+
+```typescript
+@Get('health')
+async healthCheck() {
+  return {
+    status: 'healthy' | 'degraded',
+    timestamp: ISO string,
+    redis: boolean,     // cache.ping() === 'PONG'
+    database: boolean,  // prisma.$queryRaw`SELECT 1`
+  };
+}
+```
 
 ---
 
@@ -1054,129 +628,90 @@ export class NotesService {
 **File**: `prisma/schema.prisma`
 
 ```prisma
-generator client {
-  provider = "prisma-client-js"
-}
-
-datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
-}
-
+// Users & Authentication
 model User {
-  id        String   @id @default(cuid())
-  email     String   @unique
-  name      String
-  notes     Note[]
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@index([email])
+  id, email, passwordHash, name, avatarUrl, timestamps
+  → ownedWorkspaces, workspaceMemberships, createdBoards,
+    createdTasks, assignedTasks, createdNotes, settings, inviteLinks
 }
 
+model UserSettings {
+  id, userId, language, timezone
+  emailNotifications, pushNotifications, realtimeNotifications
+}
+
+// Workspaces
+model Workspace {
+  id, name, ownerId, editorJoinCode, viewerJoinCode, timestamps
+  → owner, members[], inviteLinks[], boards[], tasks[], labels[], notes[]
+}
+
+model WorkspaceMember { id, workspaceId, userId, role (OWNER|EDITOR|VIEWER) }
+model WorkspaceInviteLink { id, workspaceId, token, role, isActive, expiresAt, maxUses, useCount }
+
+// Kanban Boards
+model Board { id, workspaceId, name, description, creatorId → columns[], tasks[] }
+model Column { id, boardId, name, position → tasks[] }
+
+// Tasks
+model Task {
+  id, workspaceId, boardId, columnId, title, description
+  priority (LOW|MEDIUM|HIGH), dueDate, position
+  creatorId, assigneeId → labels[]
+}
+
+model Label { id, workspaceId, name, color → tasks[] }
+
+// Notes
 model Note {
-  id            String         @id @default(cuid())
-  title         String?
-  yjsState      String?        @db.Text  // Yjs binary state (base64)
-  content       Json?          // Optional: periodic snapshot
-  createdAt     DateTime       @default(now())
-  updatedAt     DateTime       @updatedAt
-  lastEditedBy  String?
-  
-  owner         User           @relation(fields: [ownerId], references: [id], onDelete: Cascade)
-  ownerId       String
-  
-  updates       NoteUpdate[]
-  snapshots     NoteSnapshot[]
-  
-  @@index([ownerId])
-  @@index([updatedAt])
-}
-
-model NoteUpdate {
-  id        String   @id @default(cuid())
-  noteId    String
-  userId    String
-  delta     Bytes    // Raw Yjs update
-  createdAt DateTime @default(now())
-  
-  note      Note     @relation(fields: [noteId], references: [id], onDelete: Cascade)
-  
-  @@index([noteId, createdAt])
-}
-
-model NoteSnapshot {
-  id        String   @id @default(cuid())
-  noteId    String
-  content   Json     // Full content at snapshot time
-  createdAt DateTime @default(now())
-  
-  note      Note     @relation(fields: [noteId], references: [id], onDelete: Cascade)
-  
-  @@index([noteId, createdAt])
+  id, workspaceId, parentId, title
+  content (Json — Tiptap JSON),
+  icon, coverImage, creatorId, timestamps
+  → parent (self-relation), children[]
 }
 ```
 
-**Database Strategy**:
-- `Note.yjsState`: Current state (incremental updates)
-- `NoteUpdate`: Audit trail of all changes (optional)
-- `NoteSnapshot`: Periodic full snapshots for recovery
+**Key Design**:
+- Notes use `Json` type for Tiptap content (flexible rich-text storage)
+- Self-referencing `Note.parentId` enables nested/hierarchical notes
+- `MemberRole` enum controls workspace-level permissions (OWNER/EDITOR/VIEWER)
+- Yjs document state stored in Redis (not PostgreSQL) — ephemeral, 24h TTL
 
 ---
 
-### 9. Health Check
+## Permissions & Authorization
 
-**File**: `src/health/health.controller.ts`
+**File**: `src/common/permissions.service.ts`
 
-```typescript
-import { Controller, Get } from '@nestjs/common';
-import { RedisService } from '../redis/redis.service';
-import { PrismaService } from '../database/prisma.service';
+```
+validateWorkspaceAccess(userId, workspaceId) → checks WorkspaceMember
+validateBoardAccess(userId, boardId)         → checks board → workspace member
+validateNoteAccess(userId, noteId)           → checks note → workspace member
+```
 
-@Controller('health')
-export class HealthController {
-  constructor(
-    private redis: RedisService,
-    private prisma: PrismaService,
-  ) {}
+All validators throw `ForbiddenException` or `NotFoundException`. Used by every service before data operations.
 
-  @Get()
-  async check() {
-    const checks = {
-      status: 'unknown',
-      timestamp: new Date().toISOString(),
-      redis: false,
-      database: false,
-    };
+---
 
-    // Check Redis
-    try {
-      await this.redis.client.ping();
-      checks.redis = true;
-    } catch (e) {
-      console.error('Redis health check failed:', e);
-    }
+## Docker Development Setup
 
-    // Check Database
-    try {
-      await this.prisma.$queryRaw`SELECT 1`;
-      checks.database = true;
-    } catch (e) {
-      console.error('Database health check failed:', e);
-    }
+**File**: `docker-compose.yml`
 
-    checks.status = (checks.redis && checks.database) ? 'healthy' : 'degraded';
-
-    return checks;
-  }
-}
+```yaml
+services:
+  postgres:
+    image: postgres:15-alpine
+    ports: ["5432:5432"]
+  redis:
+    image: redis:7-alpine
+    ports: ["6380:6379"]
 ```
 
 ---
 
 ## Railway Configuration
 
-### 1. railway.toml
+### railway.toml (recommended)
 
 ```toml
 [build]
@@ -1193,7 +728,7 @@ timeout = 100
 interval = 30
 ```
 
-### 2. Environment Variables (Railway Dashboard)
+### Environment Variables
 
 ```bash
 # Database
@@ -1206,221 +741,75 @@ REDIS_URL=redis://default:pass@host:6379
 NODE_ENV=production
 PORT=3000
 
-# CORS
-FRONTEND_URL=https://your-app.vercel.app
-```
-
-### 3. Package.json Scripts
-
-```json
-{
-  "scripts": {
-    "build": "nest build",
-    "start:prod": "node dist/main",
-    "start:dev": "nest start --watch",
-    "prisma:generate": "prisma generate",
-    "prisma:migrate": "prisma migrate deploy",
-    "postinstall": "prisma generate"
-  }
-}
+# JWT
+JWT_SECRET=your-secret-key
 ```
 
 ---
 
-## Deployment Checklist
+## Performance Characteristics
 
-### Vercel (Frontend)
+### Latency Profile
 
-- [ ] Set `NEXT_PUBLIC_API_URL` environment variable
-- [ ] Set `NEXT_PUBLIC_SOCKET_URL` environment variable
-- [ ] Add Railway URL to environment variables
-- [ ] Test Socket.IO connection from preview deployment
-- [ ] Verify CORS headers in browser console
+| Operation | Expected Latency | Notes |
+|---|---|---|
+| Note edit → other users see it | ~50-100ms | REST → Redis buffer → pub/sub → Socket.IO |
+| Typing indicator appears | ~20-50ms | Direct Socket.IO event (no persistence) |
+| Note persisted to DB | ~10s (batched) | Deferred flush, resets on rapid edits |
+| Board task move broadcast | ~20-50ms | Direct Socket.IO event + pub/sub |
+| Task CRUD → other users see it | ~100-200ms | REST → DB → pub/sub → Socket.IO |
 
-### Railway (Backend)
+### Scaling
 
-- [ ] Create PostgreSQL database addon
-- [ ] Create Redis addon
-- [ ] Set all environment variables (DATABASE_URL, REDIS_URL, etc.)
-- [ ] Deploy backend service
-- [ ] Run `prisma migrate deploy` in Railway CLI
-- [ ] Check logs for successful Redis/DB connections
-- [ ] Test `/health` endpoint
-- [ ] Verify WebSocket connection works
-- [ ] Monitor memory/CPU usage
-
----
-
-## Performance Optimization
-
-### 1. Rate Limiting
-
-Add rate limiting to prevent abuse:
-
-```typescript
-// guards/rate-limit.guard.ts
-import { Injectable, CanActivate, ExecutionContext } from '@nestjs/common';
-import { RedisService } from '../redis/redis.service';
-
-@Injectable()
-export class RateLimitGuard implements CanActivate {
-  constructor(private redisService: RedisService) {}
-
-  async canActivate(context: ExecutionContext): Promise<boolean> {
-    const client = context.switchToWs().getClient();
-    const userId = client.data.userId;
-
-    const allowed = await this.redisService.checkRateLimit(
-      userId,
-      50, // 50 updates per second
-      1   // 1 second window
-    );
-
-    return allowed;
-  }
-}
-
-// Apply to gateway
-@UseGuards(RateLimitGuard)
-@SubscribeMessage('note:update')
-async handleNoteUpdate(...) { ... }
-```
-
-### 2. Connection Pooling
-
-Optimize database connections:
-
-```typescript
-// prisma.service.ts
-import { Injectable, OnModuleInit } from '@nestjs/common';
-import { PrismaClient } from '@prisma/client';
-
-@Injectable()
-export class PrismaService extends PrismaClient implements OnModuleInit {
-  constructor() {
-    super({
-      datasources: {
-        db: {
-          url: process.env.DATABASE_URL,
-        },
-      },
-      log: ['error', 'warn'],
-      // Connection pooling
-      // Railway PostgreSQL supports up to 22 connections
-      // Reserve some for other processes
-      // Recommended: instances * 5 + 5
-    });
-  }
-
-  async onModuleInit() {
-    await this.$connect();
-  }
-}
-```
-
-### 3. Batch Processing
-
-Process multiple updates together:
-
-```typescript
-// In processor
-async process(job: Job) {
-  const updates = job.data;
-  
-  // Group by noteId
-  const grouped = updates.reduce((acc, update) => {
-    if (!acc[update.noteId]) acc[update.noteId] = [];
-    acc[update.noteId].push(update);
-    return acc;
-  }, {});
-
-  // Process each note
-  await Promise.all(
-    Object.entries(grouped).map(([noteId, noteUpdates]) =>
-      this.processNoteUpdates(noteId, noteUpdates)
-    )
-  );
-}
-```
+| Component | Strategy |
+|---|---|
+| Socket.IO | Redis adapter → multiple Railway instances share state |
+| REST API | Stateless → horizontal scaling via Railway |
+| Database | Connection pooling via Prisma, Railway PostgreSQL |
+| Cache | Single Redis instance, key namespacing |
+| Notes persistence | Per-instance `setTimeout` (upgrade to BullMQ for multi-instance) |
 
 ---
 
-## Monitoring & Debugging
+## Security
 
-### 1. Logging
+### Authentication
+- **REST**: JWT Bearer token in `Authorization` header
+- **WebSocket**: JWT token in `socket.handshake.auth.token`
+- Passwords hashed with bcrypt
 
-Use structured logging:
+### Authorization
+- `PermissionsService` validates workspace/board/note access
+- Role-based: OWNER (full), EDITOR (read/write), VIEWER (read-only)
+- Global `@UseGuards(JwtAuthGuard)` on controllers + `@Public()` decorator for open routes
 
-```typescript
-// logger.service.ts
-import { Injectable, LoggerService } from '@nestjs/common';
+### Input Validation
+- Global `ValidationPipe` with `whitelist: true` strips unknown properties
+- DTOs with `class-validator` decorators for all endpoints
 
-@Injectable()
-export class CustomLogger implements LoggerService {
-  log(message: string, context?: string) {
-    console.log(JSON.stringify({
-      level: 'info',
-      message,
-      context,
-      timestamp: new Date().toISOString(),
-    }));
-  }
+---
 
-  error(message: string, trace?: string, context?: string) {
-    console.error(JSON.stringify({
-      level: 'error',
-      message,
-      trace,
-      context,
-      timestamp: new Date().toISOString(),
-    }));
-  }
+## Testing
 
-  warn(message: string, context?: string) {
-    console.warn(JSON.stringify({
-      level: 'warn',
-      message,
-      context,
-      timestamp: new Date().toISOString(),
-    }));
-  }
-}
+### Backend Tests
+
+```bash
+npm run test        # 18 unit test suites
+npm run test:e2e    # End-to-end tests
 ```
 
-### 2. Metrics
-
-Track key metrics:
+All services mock `PrismaService`, `CacheService`, `RealtimeService`:
 
 ```typescript
-// metrics.service.ts
-@Injectable()
-export class MetricsService {
-  private metrics = {
-    connections: 0,
-    messagesProcessed: 0,
-    errors: 0,
-  };
-
-  incrementConnections() {
-    this.metrics.connections++;
-  }
-
-  decrementConnections() {
-    this.metrics.connections--;
-  }
-
-  incrementMessages() {
-    this.metrics.messagesProcessed++;
-  }
-
-  incrementErrors() {
-    this.metrics.errors++;
-  }
-
-  getMetrics() {
-    return this.metrics;
-  }
-}
+const module = await Test.createTestingModule({
+  providers: [
+    NotesService,
+    { provide: PrismaService, useValue: mockPrisma },
+    { provide: CacheService, useValue: mockCache },
+    { provide: RealtimeService, useValue: mockRealtime },
+    { provide: PermissionsService, useValue: mockPermissions },
+  ],
+}).compile();
 ```
 
 ---
@@ -1430,209 +819,41 @@ export class MetricsService {
 ### Common Issues
 
 **1. WebSocket not connecting from Vercel**
-- Check CORS configuration
-- Verify `NEXT_PUBLIC_SOCKET_URL` is set correctly
-- Test with polling transport first
+- Check `NEXT_PUBLIC_WS_URL` is set correctly
+- Verify CORS allows your Vercel domain
 - Check Railway logs for connection errors
 
-**2. Redis connection timeout**
-- Verify REDIS_URL format
-- Check Railway Redis addon is running
-- Test connection with `redis-cli`
+**2. Notes not syncing between users**
+- Verify Redis is running (`GET /health` shows `redis: true`)
+- Check browser console for Socket.IO connection status
+- Ensure both users joined the same `workspace:{id}` room
 
-**3. Database connection pool exhausted**
-- Reduce Prisma connection pool size
-- Check for connection leaks
-- Monitor active connections
+**3. Redis connection timeout**
+- Verify `REDIS_URL` format and credentials
+- Check Docker Redis container is running on port 6380
+- RedisIoAdapter falls back to in-memory if Redis is unavailable
 
-**4. Messages not persisting**
-- Check BullMQ queue is running
-- Verify worker processor is active
-- Check Railway logs for queue errors
+**4. Stale data after editing**
+- `findOne` merges Redis buffer with DB — should always return latest
+- If TanStack Query shows old data, check `onNoteUpdated` callback is wired
+- `useUpdateNote` does NOT call `invalidateQueries` (realtime handles sync)
 
-**5. High latency**
-- Monitor Redis cache hit rate
-- Check database query performance
-- Optimize Yjs delta size
-- Consider CDN for static assets
-
----
-
-## Security Considerations
-
-### 1. Authentication
-
-Add JWT authentication:
-
-```typescript
-// auth.guard.ts
-@Injectable()
-export class WsAuthGuard implements CanActivate {
-  constructor(private jwtService: JwtService) {}
-
-  async canActivate(context: ExecutionContext): Promise<boolean> {
-    const client = context.switchToWs().getClient();
-    const token = client.handshake.auth.token;
-
-    try {
-      const payload = await this.jwtService.verifyAsync(token);
-      client.data.userId = payload.sub;
-      client.data.userName = payload.name;
-      return true;
-    } catch {
-      return false;
-    }
-  }
-}
-```
-
-### 2. Authorization
-
-Check note access permissions:
-
-```typescript
-@SubscribeMessage('note:join')
-@UseGuards(WsAuthGuard)
-async handleJoinNote(
-  @MessageBody() data: { noteId: string },
-  @ConnectedSocket() client: Socket,
-) {
-  const userId = client.data.userId;
-  
-  // Check if user has access to this note
-  const hasAccess = await this.notesService.checkAccess(
-    data.noteId,
-    userId
-  );
-  
-  if (!hasAccess) {
-    throw new WsException('Unauthorized');
-  }
-  
-  // ... rest of join logic
-}
-```
-
-### 3. Input Validation
-
-Validate all inputs:
-
-```typescript
-// dto/note-update.dto.ts
-import { IsString, IsArray, ArrayMaxSize } from 'class-validator';
-
-export class NoteUpdateDto {
-  @IsString()
-  noteId: string;
-
-  @IsArray()
-  @ArrayMaxSize(10000) // Prevent huge deltas
-  delta: number[];
-
-  @IsString()
-  userId: string;
-}
-```
+**5. Data loss on server restart**
+- `OnModuleDestroy` flushes all pending buffers before shutdown
+- For forced kills, Redis buffer survives (10 min TTL) — next `findOne` merges it
+- Graceful shutdown: ensure Railway sends `SIGTERM` (not `SIGKILL`)
 
 ---
 
-## Scaling Strategy
+## Future Improvements
 
-### Horizontal Scaling
-
-Railway supports multiple instances:
-
-1. **Load Balancing**: Automatic via Railway
-2. **Redis Adapter**: Shares WebSocket state across instances
-3. **Sticky Sessions**: Not needed with Redis adapter
-
-### Vertical Scaling
-
-Optimize resource usage:
-
-- Monitor memory consumption
-- Use Redis for session storage
-- Implement connection limits
-- Cache frequently accessed notes
-
----
-
-## Testing
-
-### Unit Tests
-
-```typescript
-// notes.gateway.spec.ts
-describe('NotesGateway', () => {
-  let gateway: NotesGateway;
-  let redisService: RedisService;
-  let queueService: QueueService;
-
-  beforeEach(async () => {
-    const module = await Test.createTestingModule({
-      providers: [
-        NotesGateway,
-        {
-          provide: RedisService,
-          useValue: { addUserToNote: jest.fn() },
-        },
-        {
-          provide: QueueService,
-          useValue: { addNotePersistenceJob: jest.fn() },
-        },
-      ],
-    }).compile();
-
-    gateway = module.get<NotesGateway>(NotesGateway);
-  });
-
-  it('should broadcast note updates', async () => {
-    // Test implementation
-  });
-});
-```
-
-### Integration Tests
-
-```typescript
-// socket.integration.spec.ts
-describe('Socket Integration', () => {
-  let app: INestApplication;
-  let socket: Socket;
-
-  beforeAll(async () => {
-    // Setup test app
-  });
-
-  it('should connect and join room', (done) => {
-    socket.emit('note:join', {
-      noteId: 'test-123',
-      userId: 'user-456',
-      userName: 'Test User',
-    });
-
-    socket.on('users:list', (users) => {
-      expect(users).toBeDefined();
-      done();
-    });
-  });
-});
-```
-
----
-
-## Additional Resources
-
-### Documentation
-- Yjs: https://docs.yjs.dev/
-- Tiptap: https://tiptap.dev/docs
-- Socket.IO: https://socket.io/docs/v4/
-- BullMQ: https://docs.bullmq.io/
-
-### Tools
-- Railway CLI: `npm i -g @railway/cli`
-- Prisma Studio: `npx prisma studio`
-- Redis CLI: `redis-cli -u $REDIS_URL`
+- [ ] **BullMQ job queue**: Replace `setTimeout` with BullMQ for multi-instance deployments
+- [ ] **Yjs in notes page**: Pass `ydoc`/`awareness` to SimpleEditor for true CRDT collaboration
+- [ ] **Rate limiting guard**: WebSocket rate limiter for high-frequency events
+- [ ] **NoteUpdate audit trail**: Prisma model to track all note changes
+- [ ] **NoteSnapshot**: Periodic full-content snapshots for recovery
+- [ ] **WebSocket auth guard**: Validate JWT on every `@SubscribeMessage` handler
+- [ ] **Metrics endpoint**: Connection count, messages/sec, queue depth
 
 ---
 
@@ -1640,17 +861,18 @@ describe('Socket Integration', () => {
 
 This architecture provides:
 
-✅ **Real-time collaboration** via Socket.IO + Yjs  
-✅ **Conflict-free editing** via CRDT  
-✅ **Scalable backend** via Redis adapter  
-✅ **Reliable persistence** via BullMQ queues  
-✅ **Fast broadcasts** (priority-based flow)  
-✅ **User presence** tracking  
-✅ **Production-ready** for Railway + Vercel  
+- **Real-time collaboration** via Socket.IO + Redis pub/sub (decoupled)
+- **Fast note updates** via Redis buffer → immediate broadcast → deferred DB
+- **Typing indicators** without content leakage (status-only events)
+- **Scalable transport** via Redis adapter for Socket.IO
+- **Yjs CRDT support** ready in gateway and editor (not yet wired in notes page)
+- **Health monitoring** via `/health` endpoint (Redis + DB checks)
+- **Production-ready** for Railway (Vercel frontend) + Docker (local dev)
+- **Clean separation**: Services → pub/sub → Gateway → Clients
 
 Key principles:
-1. **Broadcast first** (real-time UX)
-2. **Cache second** (fast recovery)
-3. **Persist last** (eventual consistency)
-4. **Handle failures** (retries + error handling)
-5. **Monitor everything** (logs + metrics)
+1. **Buffer first** (crash-safe Redis)
+2. **Broadcast second** (real-time UX)
+3. **Persist last** (eventual consistency, batched writes)
+4. **Decouple transport** (services don't know about Socket.IO)
+5. **Graceful degradation** (Redis fallback, OnModuleDestroy flush)
