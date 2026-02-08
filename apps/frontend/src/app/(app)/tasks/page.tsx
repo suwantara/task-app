@@ -5,10 +5,14 @@ import { useAuth } from '@/contexts/auth-context';
 import { useWorkspace } from '@/contexts/workspace-context';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import { format } from 'date-fns';
 import { apiClient } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
+import { Calendar } from '@/components/ui/calendar';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import {
   Select,
   SelectContent,
@@ -47,9 +51,10 @@ import {
   Pencil,
   Trash2,
   ArrowUpDown,
-  Calendar,
+  Calendar as CalendarIcon,
   CheckCircle2,
   Circle,
+  User,
 } from 'lucide-react';
 
 type Priority = 'LOW' | 'MEDIUM' | 'HIGH';
@@ -58,6 +63,24 @@ interface Board {
   id: string;
   name: string;
   workspaceId: string;
+}
+
+interface Column {
+  id: string;
+  boardId: string;
+  name: string;
+  position: number;
+}
+
+interface Member {
+  id: string;
+  userId: string;
+  user: {
+    id: string;
+    name: string;
+    email: string;
+    avatarUrl?: string;
+  };
 }
 
 interface Task {
@@ -70,6 +93,12 @@ interface Task {
   workspaceId: string;
   position: number;
   dueDate?: string;
+  assigneeId?: string;
+  assignee?: {
+    id: string;
+    name: string;
+    avatarUrl?: string;
+  };
   createdAt: string;
   updatedAt: string;
 }
@@ -78,6 +107,7 @@ interface TaskRow extends Task {
   boardName: string;
   columnName: string;
   completed: boolean;
+  columns: Column[]; // Available columns for this board
 }
 
 const priorityConfig: Record<Priority, { label: string; color: string }> = {
@@ -96,6 +126,7 @@ export default function TasksTablePage() {
 
   const [boards, setBoards] = useState<Board[]>([]);
   const [tasks, setTasks] = useState<TaskRow[]>([]);
+  const [members, setMembers] = useState<Member[]>([]);
   const [loading, setLoading] = useState(true);
   const [completedTasks, setCompletedTasks] = useState<Set<string>>(new Set());
 
@@ -132,8 +163,13 @@ export default function TasksTablePage() {
     setLoading(true);
 
     try {
-      const boardsData = await apiClient.getBoards(activeWorkspace.id);
+      // Fetch boards and members in parallel
+      const [boardsData, membersData] = await Promise.all([
+        apiClient.getBoards(activeWorkspace.id),
+        apiClient.getWorkspaceMembers(activeWorkspace.id),
+      ]);
       setBoards(boardsData);
+      setMembers(membersData);
 
       const allTasks: TaskRow[] = [];
 
@@ -151,6 +187,7 @@ export default function TasksTablePage() {
             boardName: board.name,
             columnName: columnMap.get(task.columnId) || 'Unknown',
             completed: completedTasks.has(task.id),
+            columns: columnsData, // Include columns for status dropdown
           });
         }
       }
@@ -217,6 +254,71 @@ export default function TasksTablePage() {
       loadAllTasks();
     } catch (error) {
       console.error('Failed to delete task:', error);
+    }
+  };
+
+  // Inline update: Status (column)
+  const handleStatusChange = async (taskId: string, newColumnId: string, task: TaskRow) => {
+    try {
+      // Optimistic update
+      setTasks((prev) =>
+        prev.map((t) =>
+          t.id === taskId
+            ? {
+                ...t,
+                columnId: newColumnId,
+                columnName: task.columns.find((c) => c.id === newColumnId)?.name || t.columnName,
+              }
+            : t
+        )
+      );
+      await apiClient.updateTask(taskId, { columnId: newColumnId });
+    } catch (error) {
+      console.error('Failed to update status:', error);
+      loadAllTasks(); // Revert on error
+    }
+  };
+
+  // Inline update: Assignee
+  const handleAssigneeChange = async (taskId: string, assigneeId: string | null) => {
+    try {
+      const member = members.find((m) => m.userId === assigneeId);
+      // Optimistic update
+      setTasks((prev) =>
+        prev.map((t) =>
+          t.id === taskId
+            ? {
+                ...t,
+                assigneeId: assigneeId ?? undefined,
+                assignee: member
+                  ? { id: member.user.id, name: member.user.name, avatarUrl: member.user.avatarUrl }
+                  : undefined,
+              }
+            : t
+        )
+      );
+      await apiClient.updateTask(taskId, { assigneeId: assigneeId ?? undefined });
+    } catch (error) {
+      console.error('Failed to update assignee:', error);
+      loadAllTasks(); // Revert on error
+    }
+  };
+
+  // Inline update: Due Date
+  const handleDueDateChange = async (taskId: string, date: Date | undefined) => {
+    try {
+      // Optimistic update
+      setTasks((prev) =>
+        prev.map((t) =>
+          t.id === taskId
+            ? { ...t, dueDate: date?.toISOString() }
+            : t
+        )
+      );
+      await apiClient.updateTask(taskId, { dueDate: date?.toISOString() });
+    } catch (error) {
+      console.error('Failed to update due date:', error);
+      loadAllTasks(); // Revert on error
     }
   };
 
@@ -298,7 +400,7 @@ export default function TasksTablePage() {
       </div>
 
       {/* Table */}
-      <div className="flex-1 overflow-auto">
+      <div className="flex-1 overflow-auto px-6">
         {loading ? (
           <div className="p-6 space-y-3">
             {Array.from({ length: 8 }).map((_, i) => (
@@ -344,6 +446,9 @@ export default function TasksTablePage() {
                     Status
                     <ArrowUpDown className="ml-1 size-3" />
                   </Button>
+                </TableHead>
+                <TableHead>
+                  <span className="text-xs font-medium">Assignee</span>
                 </TableHead>
                 <TableHead>
                   <Button
@@ -429,10 +534,74 @@ export default function TasksTablePage() {
                       </Link>
                     </TableCell>
                     <TableCell>
-                      <Badge variant="outline" className="text-xs font-normal">
-                        {task.columnName}
-                      </Badge>
+                      <Select
+                        value={task.columnId}
+                        onValueChange={(value) => handleStatusChange(task.id, value, task)}
+                      >
+                        <SelectTrigger className="h-8 w-[120px] text-xs">
+                          <SelectValue placeholder="Status" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {task.columns.map((col) => (
+                            <SelectItem key={col.id} value={col.id} className="text-xs">
+                              {col.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
                     </TableCell>
+                    {/* Assignee */}
+                    <TableCell>
+                      <Select
+                        value={task.assigneeId || 'unassigned'}
+                        onValueChange={(value) => 
+                          handleAssigneeChange(task.id, value === 'unassigned' ? null : value)
+                        }
+                      >
+                        <SelectTrigger className="h-8 w-[140px] text-xs">
+                          <SelectValue>
+                            {task.assignee ? (
+                              <div className="flex items-center gap-2">
+                                <Avatar className="h-5 w-5">
+                                  <AvatarImage src={task.assignee.avatarUrl} />
+                                  <AvatarFallback className="text-[10px]">
+                                    {task.assignee.name?.slice(0, 2).toUpperCase()}
+                                  </AvatarFallback>
+                                </Avatar>
+                                <span className="truncate">{task.assignee.name}</span>
+                              </div>
+                            ) : (
+                              <div className="flex items-center gap-2 text-muted-foreground">
+                                <User className="h-4 w-4" />
+                                <span>Unassigned</span>
+                              </div>
+                            )}
+                          </SelectValue>
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="unassigned" className="text-xs">
+                            <div className="flex items-center gap-2">
+                              <User className="h-4 w-4 text-muted-foreground" />
+                              <span>Unassigned</span>
+                            </div>
+                          </SelectItem>
+                          {members.map((member) => (
+                            <SelectItem key={member.userId} value={member.userId} className="text-xs">
+                              <div className="flex items-center gap-2">
+                                <Avatar className="h-5 w-5">
+                                  <AvatarImage src={member.user.avatarUrl} />
+                                  <AvatarFallback className="text-[10px]">
+                                    {member.user.name?.slice(0, 2).toUpperCase()}
+                                  </AvatarFallback>
+                                </Avatar>
+                                <span>{member.user.name}</span>
+                              </div>
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </TableCell>
+                    {/* Priority */}
                     <TableCell>
                       <Badge
                         variant="secondary"
@@ -444,15 +613,30 @@ export default function TasksTablePage() {
                         {priorityConfig[task.priority].label}
                       </Badge>
                     </TableCell>
+                    {/* Due Date */}
                     <TableCell>
-                      {task.dueDate ? (
-                        <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                          <Calendar className="size-3" />
-                          {new Date(task.dueDate).toLocaleDateString()}
-                        </div>
-                      ) : (
-                        <span className="text-xs text-muted-foreground">—</span>
-                      )}
+                      <Popover>
+                        <PopoverTrigger asChild>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-8 px-2 text-xs justify-start font-normal"
+                          >
+                            <CalendarIcon className="mr-2 h-3 w-3" />
+                            {task.dueDate
+                              ? format(new Date(task.dueDate), 'MMM d, yyyy')
+                              : 'Set date'}
+                          </Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-auto p-0" align="start">
+                          <Calendar
+                            mode="single"
+                            selected={task.dueDate ? new Date(task.dueDate) : undefined}
+                            onSelect={(date) => handleDueDateChange(task.id, date)}
+                            initialFocus
+                          />
+                        </PopoverContent>
+                      </Popover>
                     </TableCell>
                     <TableCell>
                       <DropdownMenu>

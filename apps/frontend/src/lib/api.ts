@@ -387,6 +387,7 @@ interface CreateTaskDto {
   description?: string;
   priority?: 'LOW' | 'MEDIUM' | 'HIGH';
   dueDate?: string;
+  assigneeId?: string;
   position: number;
 }
 
