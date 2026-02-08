@@ -5,6 +5,8 @@ import { useAuth } from '@/contexts/auth-context';
 import { useWorkspace } from '@/contexts/workspace-context';
 import { useRouter } from 'next/navigation';
 import { apiClient } from '@/lib/api';
+import { useNotes, useCreateNote, useUpdateNote, useDeleteNote, queryKeys } from '@/hooks/use-queries';
+import { useQueryClient } from '@tanstack/react-query';
 import { useNoteRealtime } from '@/hooks/use-realtime';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -26,7 +28,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { SimpleEditor } from '@/components/tiptap-templates/simple/simple-editor';
-import { Plus, Save, FileText, Clock, Search, Pencil, Trash2, MoreHorizontal } from 'lucide-react';
+import { Plus, Save, FileText, Clock, Search, Pencil, Trash2, MoreHorizontal, Check } from 'lucide-react';
 
 interface Note {
   id: string;
@@ -42,37 +44,57 @@ export default function NotesPage() {
   const { user, loading: authLoading } = useAuth();
   const router = useRouter();
   const { activeWorkspace } = useWorkspace();
-  const [notes, setNotes] = useState<Note[]>([]);
+  const workspaceId = activeWorkspace?.id || '';
+  const qc = useQueryClient();
+
+  // React Query: notes list & mutations
+  const { data: notes = [], isLoading: loading } = useNotes(workspaceId);
+  const createNoteMutation = useCreateNote();
+  const updateNoteMutation = useUpdateNote();
+  const deleteNoteMutation = useDeleteNote();
+
   const [selectedNote, setSelectedNote] = useState<Note | null>(null);
-  const [loading, setLoading] = useState(true);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [newNoteTitle, setNewNoteTitle] = useState('');
   const [editingContent, setEditingContent] = useState('');
   const [editingTitle, setEditingTitle] = useState('');
-  const [saving, setSaving] = useState(false);
-  const [creating, setCreating] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [showRenameModal, setShowRenameModal] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [noteToModify, setNoteToModify] = useState<Note | null>(null);
   const [renameTitle, setRenameTitle] = useState('');
-  const [deleting, setDeleting] = useState(false);
+
+  // Autosave state
+  const AUTOSAVE_INTERVAL = 3000; // 3 seconds
+  const [saveStatus, setSaveStatus] = useState<'idle' | 'unsaved' | 'saving' | 'saved'>('idle');
   const autoSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const hasPendingChanges = useRef(false);
 
   // Flag to ignore remote content updates when we are actively editing
   const isLocalEdit = useRef(false);
   const selectedNoteRef = useRef<string | null>(null);
 
-  // Realtime hook
+  // Realtime hook — update React Query cache on remote changes
   useNoteRealtime(
     activeWorkspace?.id || null,
     {
+      onNoteCreated: useCallback((note: unknown) => {
+        const n = note as Note;
+        if (workspaceId) {
+          qc.setQueryData(queryKeys.notes(workspaceId), (old: Note[] | undefined) =>
+            old ? [n, ...old] : [n],
+          );
+        }
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+      }, [workspaceId]),
+
       onNoteUpdated: useCallback((note: unknown) => {
         const n = note as Note;
-        // Update list
-        setNotes((prev) =>
-          prev.map((existing) => (existing.id === n.id ? { ...existing, ...n } : existing)),
-        );
+        if (workspaceId) {
+          qc.setQueryData(queryKeys.notes(workspaceId), (old: Note[] | undefined) =>
+            old ? old.map((existing) => (existing.id === n.id ? { ...existing, ...n } : existing)) : old,
+          );
+        }
         
         // Update current note if selected and not currently being edited locally
         if (selectedNoteRef.current === n.id && !isLocalEdit.current) {
@@ -80,10 +102,25 @@ export default function NotesPage() {
           setEditingTitle(n.title);
           const content = typeof n.content === 'string' 
             ? n.content 
-            : JSON.stringify(n.content || '', null, 2);
+            : JSON.stringify(n.content ?? '', null, 2);
           setEditingContent(content);
         }
-      }, []),
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+      }, [workspaceId]),
+
+      onNoteDeleted: useCallback((data: { id: string }) => {
+        if (workspaceId) {
+          qc.setQueryData(queryKeys.notes(workspaceId), (old: Note[] | undefined) =>
+            old ? old.filter((n) => n.id !== data.id) : old,
+          );
+        }
+        if (selectedNoteRef.current === data.id) {
+          setSelectedNote(null);
+          setEditingContent('');
+          setEditingTitle('');
+        }
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+      }, [workspaceId]),
     },
   );
 
@@ -93,16 +130,14 @@ export default function NotesPage() {
     }
   }, [user, authLoading, router]);
 
-  // Clear selected note and reload when workspace changes
+  // Clear selected note when workspace changes
   useEffect(() => {
     if (activeWorkspace) {
       setSelectedNote(null);
       setEditingContent('');
       setEditingTitle('');
-      loadNotes();
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeWorkspace?.id]);
+  }, [activeWorkspace?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Cleanup
   useEffect(() => {
@@ -117,109 +152,99 @@ export default function NotesPage() {
     selectedNoteRef.current = selectedNote?.id ?? null;
   }, [selectedNote]);
 
-  const loadNotes = async () => {
-    if (!activeWorkspace) {
-      setLoading(false);
-      return;
-    }
-
-    try {
-      const data = await apiClient.getNotes(activeWorkspace.id);
-      setNotes(data);
-    } catch (error) {
-      console.error('Failed to load notes:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
   const handleCreateNote = async (e: React.BaseSyntheticEvent) => {
     e.preventDefault();
-    if (!newNoteTitle.trim() || !activeWorkspace || creating) return;
-    setCreating(true);
+    if (!newNoteTitle.trim() || !activeWorkspace || createNoteMutation.isPending) return;
 
     try {
-      const newNote = await apiClient.createNote(
-        activeWorkspace.id,
-        newNoteTitle
-      );
+      const newNote = await createNoteMutation.mutateAsync({
+        workspaceId: activeWorkspace.id,
+        title: newNoteTitle,
+      });
       setNewNoteTitle('');
       setShowCreateModal(false);
-      await loadNotes();
-      setSelectedNote(newNote);
-      setEditingTitle(newNote.title);
+      setSelectedNote(newNote as Note);
+      setEditingTitle((newNote as Note).title);
       setEditingContent('');
+      setSaveStatus('idle');
     } catch (error) {
       console.error('Failed to create note:', error);
-    } finally {
-      setCreating(false);
     }
   };
 
-  const handleSaveNote = async () => {
-    if (!selectedNote || !user) return;
-    setSaving(true);
-    isLocalEdit.current = false; // Allow remote updates after save
+  // Save note using React Query mutation
+  const handleSaveNote = useCallback(async () => {
+    if (!selectedNoteRef.current || !workspaceId) return;
+    setSaveStatus('saving');
+    isLocalEdit.current = false;
+    hasPendingChanges.current = false;
 
     try {
-      await apiClient.updateNote(selectedNote.id, {
+      await updateNoteMutation.mutateAsync({
+        id: selectedNoteRef.current,
+        workspaceId,
         title: editingTitle,
         content: editingContent,
       });
-      // No manual emit - backend broadcasts note:updated
-      
-      await loadNotes();
+      setSaveStatus('saved');
+      // Reset to idle after 2s
+      setTimeout(() => setSaveStatus((s) => s === 'saved' ? 'idle' : s), 2000);
     } catch (error) {
       console.error('Failed to save note:', error);
-    } finally {
-      setSaving(false);
+      setSaveStatus('unsaved');
     }
-  };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editingTitle, editingContent, workspaceId]);
 
-  // Auto-save with debounce + realtime broadcast
-  // Auto-save with debounce
+  // Schedule autosave with configurable interval
+  const scheduleAutosave = useCallback(() => {
+    if (autoSaveTimer.current) clearTimeout(autoSaveTimer.current);
+    hasPendingChanges.current = true;
+    setSaveStatus('unsaved');
+    autoSaveTimer.current = setTimeout(() => {
+      handleSaveNote();
+    }, AUTOSAVE_INTERVAL);
+  }, [handleSaveNote]);
+
+  // Auto-save with configurable interval
   const handleContentChange = (content: string) => {
     setEditingContent(content);
     isLocalEdit.current = true;
-
-    if (autoSaveTimer.current) clearTimeout(autoSaveTimer.current);
-    autoSaveTimer.current = setTimeout(() => {
-      if (selectedNote) {
-        handleSaveNote();
-      }
-    }, 2000);
+    scheduleAutosave();
   };
 
   const handleTitleChange = (title: string) => {
     setEditingTitle(title);
     isLocalEdit.current = true;
-
-    if (autoSaveTimer.current) clearTimeout(autoSaveTimer.current);
-    autoSaveTimer.current = setTimeout(() => {
-      if (selectedNote) {
-        handleSaveNote();
-      }
-    }, 2000);
+    scheduleAutosave();
   };
 
   const handleSelectNote = async (note: Note) => {
     // Stop editing signal for previous note
     isLocalEdit.current = false;
 
-    // Save current note before switching
+    // Flush pending save for current note before switching
     if (autoSaveTimer.current) {
       clearTimeout(autoSaveTimer.current);
       autoSaveTimer.current = null;
     }
-    if (selectedNote && editingContent) {
-      await apiClient.updateNote(selectedNote.id, {
+    if (selectedNote && hasPendingChanges.current) {
+      await updateNoteMutation.mutateAsync({
+        id: selectedNote.id,
+        workspaceId,
         title: editingTitle,
         content: editingContent,
       }).catch(() => {});
+      hasPendingChanges.current = false;
     }
 
     try {
-      const fullNote = await apiClient.getNote(note.id);
+      // Use React Query queryClient.fetchQuery for caching
+      const fullNote = await qc.fetchQuery({
+        queryKey: queryKeys.note(note.id),
+        queryFn: () => apiClient.getNote(note.id),
+        staleTime: 30_000,
+      });
       setSelectedNote(fullNote);
       setEditingTitle(fullNote.title);
       let contentStr = '';
@@ -230,8 +255,7 @@ export default function NotesPage() {
             : JSON.stringify(fullNote.content, null, 2);
       }
       setEditingContent(contentStr);
-      // Note: Yjs collaborative editing temporarily disabled (TipTap reconfigure bug)
-      // Real-time sync still works via Socket.IO emitContentUpdate
+      setSaveStatus('idle');
     } catch (error) {
       console.error('Failed to load note:', error);
     }
@@ -244,11 +268,9 @@ export default function NotesPage() {
     : notes;
 
   const handleDeleteNote = async () => {
-    if (!noteToModify) return;
-    setDeleting(true);
+    if (!noteToModify || !workspaceId) return;
     try {
-      await apiClient.deleteNote(noteToModify.id);
-      setNotes((prev) => prev.filter((n) => n.id !== noteToModify.id));
+      await deleteNoteMutation.mutateAsync({ id: noteToModify.id, workspaceId });
       if (selectedNote?.id === noteToModify.id) {
         setSelectedNote(null);
         setEditingContent('');
@@ -258,19 +280,20 @@ export default function NotesPage() {
       setNoteToModify(null);
     } catch (error) {
       console.error('Failed to delete note:', error);
-    } finally {
-      setDeleting(false);
     }
   };
 
   const handleRenameNote = async () => {
-    if (!noteToModify || !renameTitle.trim()) return;
+    if (!noteToModify || !renameTitle.trim() || !workspaceId) return;
     try {
-      const updated = await apiClient.updateNote(noteToModify.id, { title: renameTitle.trim() });
-      setNotes((prev) => prev.map((n) => (n.id === noteToModify.id ? { ...n, title: updated.title } : n)));
+      const updated = await updateNoteMutation.mutateAsync({
+        id: noteToModify.id,
+        workspaceId,
+        title: renameTitle.trim(),
+      });
       if (selectedNote?.id === noteToModify.id) {
-        setSelectedNote((prev) => prev ? { ...prev, title: updated.title } : null);
-        setEditingTitle(updated.title);
+        setSelectedNote((prev) => prev ? { ...prev, title: (updated as Note).title } : null);
+        setEditingTitle((updated as Note).title);
       }
       setShowRenameModal(false);
       setNoteToModify(null);
@@ -413,10 +436,19 @@ export default function NotesPage() {
                 placeholder="Untitled"
               />
               <div className="flex items-center gap-2 shrink-0 ml-4">
-                {saving && (
-                  <span className="text-xs text-muted-foreground">Saving...</span>
+                {saveStatus === 'saving' && (
+                  <span className="text-xs text-muted-foreground animate-pulse">Saving...</span>
                 )}
-                <Button size="sm" variant="outline" onClick={handleSaveNote}>
+                {saveStatus === 'saved' && (
+                  <span className="flex items-center gap-1 text-xs text-green-600">
+                    <Check className="size-3" />
+                    Saved
+                  </span>
+                )}
+                {saveStatus === 'unsaved' && (
+                  <span className="text-xs text-amber-500">Unsaved</span>
+                )}
+                <Button size="sm" variant="outline" onClick={handleSaveNote} disabled={saveStatus === 'saving'}>
                   <Save className="mr-1.5 size-3.5" />
                   Save
                 </Button>
@@ -492,7 +524,7 @@ export default function NotesPage() {
               >
                 Cancel
               </Button>
-              <Button type="submit" disabled={creating}>Create</Button>
+              <Button type="submit" disabled={createNoteMutation.isPending}>Create</Button>
             </DialogFooter>
           </form>
         </DialogContent>
@@ -566,9 +598,9 @@ export default function NotesPage() {
               type="button"
               variant="destructive"
               onClick={handleDeleteNote}
-              disabled={deleting}
+              disabled={deleteNoteMutation.isPending}
             >
-              {deleting ? 'Deleting...' : 'Delete'}
+              {deleteNoteMutation.isPending ? 'Deleting...' : 'Delete'}
             </Button>
           </DialogFooter>
         </DialogContent>

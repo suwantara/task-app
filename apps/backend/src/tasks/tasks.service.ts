@@ -119,10 +119,9 @@ export class TasksService {
   }
 
   async update(id: string, userId: string, updateTaskDto: UpdateTaskDto) {
-    await this.permissions.validateTaskAccess(userId, id);
+    const { workspaceId, boardId } = await this.permissions.validateTaskAccess(userId, id);
 
-    // 1. Fetch current task to get boardId if not in cache (needed for keys)
-    // We try cache first for speed
+    // Fetch current task (try cache first for speed)
     const cacheKey = this.getCacheKey.task(id);
     let task = await this.cache.get<Task>(cacheKey);
 
@@ -135,8 +134,6 @@ export class TasksService {
     });
 
     if (!task) throw new NotFoundException('Task not found');
-    const boardId = task.boardId;
-    const workspaceId = task.workspaceId;
 
     // SECURITY: Validate columnId belongs to the same board
     if (updateTaskDto.columnId && updateTaskDto.columnId !== task.columnId) {
@@ -215,7 +212,7 @@ export class TasksService {
   }
 
   async remove(id: string, userId: string) {
-    await this.permissions.validateTaskAccess(userId, id);
+    const { boardId } = await this.permissions.validateTaskAccess(userId, id);
 
     const task = await this.prisma.task.delete({
       where: { id },
@@ -224,8 +221,8 @@ export class TasksService {
     // Invalidate caches
     await Promise.all([
       this.cache.del(this.getCacheKey.task(id)),
-      this.cache.del(this.getCacheKey.tasksList(task.boardId)),
-      this.cache.del(`board:${task.boardId}`),
+      this.cache.del(this.getCacheKey.tasksList(boardId)),
+      this.cache.del(`board:${boardId}`),
     ]);
 
     this.realtime.emitTaskDeleted(task.boardId, task.id);

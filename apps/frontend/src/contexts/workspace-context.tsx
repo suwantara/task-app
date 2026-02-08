@@ -1,8 +1,9 @@
 'use client';
 
-import React, { createContext, useContext, useState, useCallback, useEffect, useMemo } from 'react';
-import { apiClient } from '@/lib/api';
+import React, { createContext, useContext, useState, useCallback, useMemo } from 'react';
 import { useAuth } from '@/contexts/auth-context';
+import { useWorkspaces as useWorkspacesQuery, queryKeys } from '@/hooks/use-queries';
+import { useQueryClient } from '@tanstack/react-query';
 
 interface WorkspaceMember {
   id: string;
@@ -35,50 +36,41 @@ const WorkspaceContext = createContext<WorkspaceContextType | undefined>(undefin
 
 export function WorkspaceProvider({ children }: Readonly<{ children: React.ReactNode }>) {
   const { user } = useAuth();
-  const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
+  const qc = useQueryClient();
   const [internalActiveWorkspace, setInternalActiveWorkspace] = useState<Workspace | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
 
-  const loadWorkspaces = useCallback(async () => {
-    if (!user) return;
-    
-    setIsLoading(true);
-    try {
-      const data = await apiClient.getWorkspaces();
-      setWorkspaces(data as Workspace[]);
-      
-      // Auto-select first workspace if none selected
-      if (data.length > 0) {
-        setInternalActiveWorkspace((current) => current || (data[0] as Workspace));
-      }
-    } catch (error) {
-      console.error('Failed to load workspaces:', error);
-    } finally {
-      setIsLoading(false);
+  const { data: workspacesData, isLoading } = useWorkspacesQuery({
+    enabled: !!user,
+  });
+
+  const workspaces = (workspacesData ?? []) as Workspace[];
+
+  // Auto-select first workspace if none selected (or selected was removed)
+  const activeWorkspace = useMemo(() => {
+    if (internalActiveWorkspace) {
+      // Verify it still exists in the list
+      const stillExists = workspaces.some((w) => w.id === internalActiveWorkspace.id);
+      if (stillExists) return internalActiveWorkspace;
     }
-  }, [user]);
+    return workspaces.length > 0 ? workspaces[0] : null;
+  }, [internalActiveWorkspace, workspaces]);
 
   const setActiveWorkspace = useCallback((workspace: Workspace | null) => {
     setInternalActiveWorkspace(workspace);
   }, []);
 
-  // Load workspaces when user logs in
-  useEffect(() => {
-    if (user) {
-      loadWorkspaces();
-    } else {
-      setWorkspaces([]);
-      setInternalActiveWorkspace(null);
-    }
-  }, [user, loadWorkspaces]);
+  // Backwards-compatible loadWorkspaces: just invalidate the React Query cache
+  const loadWorkspaces = useCallback(async () => {
+    await qc.invalidateQueries({ queryKey: queryKeys.workspaces });
+  }, [qc]);
 
   const value = useMemo(() => ({
     workspaces,
-    activeWorkspace: internalActiveWorkspace,
+    activeWorkspace,
     setActiveWorkspace,
     loadWorkspaces,
     isLoading,
-  }), [workspaces, internalActiveWorkspace, setActiveWorkspace, loadWorkspaces, isLoading]);
+  }), [workspaces, activeWorkspace, setActiveWorkspace, loadWorkspaces, isLoading]);
 
   return (
     <WorkspaceContext.Provider value={value}>

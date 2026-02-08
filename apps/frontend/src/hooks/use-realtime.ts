@@ -104,7 +104,9 @@ export function useBoardRealtime(boardId: string | null, callbacks: RealtimeCall
 export function useNoteRealtime(
   workspaceId: string | null,
   callbacks: {
+    onNoteCreated?: (note: unknown) => void;
     onNoteUpdated?: (note: unknown) => void;
+    onNoteDeleted?: (data: { id: string }) => void;
   },
 ) {
   const { socket, joinRoom, leaveRoom } = useSocket();
@@ -123,10 +125,22 @@ export function useNoteRealtime(
 
     const handlers: [string, (...args: unknown[]) => void][] = [];
 
+    if (callbacks.onNoteCreated) {
+      const h = callbacks.onNoteCreated;
+      socket.on('note:created', h);
+      handlers.push(['note:created', h]);
+    }
+
     if (callbacks.onNoteUpdated) {
       const h = callbacks.onNoteUpdated;
       socket.on('note:updated', h);
       handlers.push(['note:updated', h]);
+    }
+
+    if (callbacks.onNoteDeleted) {
+      const h = callbacks.onNoteDeleted as (...args: unknown[]) => void;
+      socket.on('note:deleted', h);
+      handlers.push(['note:deleted', h]);
     }
 
     return () => {

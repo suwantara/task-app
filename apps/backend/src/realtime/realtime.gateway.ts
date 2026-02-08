@@ -4,11 +4,14 @@ import {
   SubscribeMessage,
   OnGatewayConnection,
   OnGatewayDisconnect,
+  OnGatewayInit,
   MessageBody,
   ConnectedSocket,
 } from '@nestjs/websockets';
+import { Logger } from '@nestjs/common';
 import { Server, Socket } from 'socket.io';
 import * as Y from 'yjs';
+import { CacheService } from '../cache/cache.service';
 
 interface PresenceUser {
   userId: string;
@@ -25,37 +28,61 @@ interface PresenceUser {
   },
 })
 export class RealtimeGateway
-  implements OnGatewayConnection, OnGatewayDisconnect
+  implements OnGatewayConnection, OnGatewayDisconnect, OnGatewayInit
 {
+  private readonly logger = new Logger(RealtimeGateway.name);
+
   @WebSocketServer()
   server: Server;
 
-  // Map<room, Map<socketId, PresenceUser>>
-  private readonly roomPresence = new Map<string, Map<string, PresenceUser>>();
-
-  // Map<noteId, Uint8Array> - stores Yjs document state
-  private readonly yjsDocs = new Map<string, Uint8Array>();
-
-  // Map<noteId, Set<socketId>> - tracks clients in each Yjs room
+  // In-memory Yjs room tracking (per-instance, for cleanup only)
   private readonly yjsRooms = new Map<string, Set<string>>();
 
-  handleConnection(client: Socket) {
-    console.log(`Client connected: ${client.id}`);
+  constructor(private readonly cache: CacheService) {}
+
+  /**
+   * After the WebSocket server is initialized, subscribe to Redis pub/sub
+   * channels and relay events to Socket.IO rooms.
+   */
+  async afterInit() {
+    this.logger.log('WebSocket gateway initialized, setting up Redis subscriptions');
+
+    // Subscribe to board events (task:created, task:updated, etc.)
+    await this.cache.psubscribe('board:*', (channel, message) => {
+      const msg = message as { event: string; data: unknown };
+      this.server.to(channel).emit(msg.event, msg.data);
+    });
+
+    // Subscribe to workspace events (note:created, note:updated, etc.)
+    await this.cache.psubscribe('workspace:*', (channel, message) => {
+      const msg = message as { event: string; data: unknown };
+      this.server.to(channel).emit(msg.event, msg.data);
+    });
+
+    this.logger.log('Redis pub/sub subscriptions active');
   }
 
-  handleDisconnect(client: Socket) {
-    console.log(`Client disconnected: ${client.id}`);
-    // Remove from all rooms and notify
-    for (const [room, members] of this.roomPresence.entries()) {
-      if (members.has(client.id)) {
-        members.delete(client.id);
-        this.server.to(room).emit('presence:update', {
-          users: Array.from(members.values()),
-        });
-        if (members.size === 0) {
-          this.roomPresence.delete(room);
-        }
-      }
+  handleConnection(client: Socket) {
+    this.logger.debug(`Client connected: ${client.id}`);
+  }
+
+  async handleDisconnect(client: Socket) {
+    this.logger.debug(`Client disconnected: ${client.id}`);
+
+    // Get all rooms this socket belonged to
+    const rooms = await this.cache.smembers(`socket:rooms:${client.id}`);
+
+    // Remove presence from all rooms
+    for (const room of rooms) {
+      await this.cache.hdel(`presence:${room}`, client.id);
+      // Broadcast updated presence
+      const remaining = await this.getPresenceUsers(room);
+      this.server.to(room).emit('presence:update', { users: remaining });
+    }
+
+    // Cleanup socket room tracking
+    if (rooms.length > 0) {
+      await this.cache.del(`socket:rooms:${client.id}`);
     }
   }
 
@@ -67,15 +94,18 @@ export class RealtimeGateway
     const room = data.room;
     await client.join(room);
 
-    // Track presence
+    // Track presence in Redis
     if (data.user) {
-      if (!this.roomPresence.has(room)) {
-        this.roomPresence.set(room, new Map());
-      }
-      this.roomPresence.get(room)!.set(client.id, data.user);
-      this.server.to(room).emit('presence:update', {
-        users: Array.from(this.roomPresence.get(room)!.values()),
-      });
+      await this.cache.hset(
+        `presence:${room}`,
+        client.id,
+        JSON.stringify(data.user),
+      );
+      await this.cache.sadd(`socket:rooms:${client.id}`, room);
+
+      // Broadcast updated presence list
+      const users = await this.getPresenceUsers(room);
+      this.server.to(room).emit('presence:update', { users });
     }
 
     return { event: 'joinedRoom', data: room };
@@ -88,31 +118,33 @@ export class RealtimeGateway
   ) {
     await client.leave(room);
 
-    // Remove presence
-    const members = this.roomPresence.get(room);
-    if (members) {
-      members.delete(client.id);
-      this.server.to(room).emit('presence:update', {
-        users: Array.from(members.values()),
-      });
-      if (members.size === 0) {
-        this.roomPresence.delete(room);
-      }
-    }
+    // Remove presence from Redis
+    await this.cache.hdel(`presence:${room}`, client.id);
+    await this.cache.srem(`socket:rooms:${client.id}`, room);
+
+    // Broadcast updated presence list
+    const users = await this.getPresenceUsers(room);
+    this.server.to(room).emit('presence:update', { users });
 
     return { event: 'leftRoom', data: room };
   }
 
   @SubscribeMessage('cursor:move')
-  handleCursorMove(
+  async handleCursorMove(
     @MessageBody() data: { room: string; cursor: { x: number; y: number } },
     @ConnectedSocket() client: Socket,
   ) {
-    const members = this.roomPresence.get(data.room);
-    if (members?.has(client.id)) {
-      const user = members.get(client.id)!;
+    // Update cursor in Redis presence
+    const raw = await this.cache.hgetall(`presence:${data.room}`);
+    const userJson = raw[client.id];
+    if (userJson) {
+      const user: PresenceUser = JSON.parse(userJson);
       user.cursor = data.cursor;
-      members.set(client.id, user);
+      await this.cache.hset(
+        `presence:${data.room}`,
+        client.id,
+        JSON.stringify(user),
+      );
       // Broadcast to others in the room
       client.to(data.room).emit('cursor:update', {
         socketId: client.id,
@@ -192,62 +224,71 @@ export class RealtimeGateway
   // --- Page Presence ---
 
   @SubscribeMessage('presence:update-page')
-  handleUpdatePage(
+  async handleUpdatePage(
     @MessageBody() data: { room: string; page: string },
     @ConnectedSocket() client: Socket,
   ) {
-    const members = this.roomPresence.get(data.room);
-    if (members?.has(client.id)) {
-      const user = members.get(client.id)!;
+    const raw = await this.cache.hgetall(`presence:${data.room}`);
+    const userJson = raw[client.id];
+    if (userJson) {
+      const user: PresenceUser = JSON.parse(userJson);
       user.currentPage = data.page;
-      members.set(client.id, user);
+      await this.cache.hset(
+        `presence:${data.room}`,
+        client.id,
+        JSON.stringify(user),
+      );
       // Broadcast updated presence list
-      this.server.to(data.room).emit('presence:update', {
-        users: Array.from(members.values()),
-      });
+      const users = await this.getPresenceUsers(data.room);
+      this.server.to(data.room).emit('presence:update', { users });
     }
   }
 
-  // --- Yjs Collaborative Editing ---
+  // --- Yjs Collaborative Editing (state stored in Redis) ---
 
   @SubscribeMessage('yjs:join')
-  handleYjsJoin(
+  async handleYjsJoin(
     @MessageBody() data: { noteId: string },
     @ConnectedSocket() client: Socket,
   ) {
     const room = `yjs:${data.noteId}`;
     void client.join(room);
 
-    // Track client
+    // Track client (in-memory per-instance for cleanup)
     if (!this.yjsRooms.has(data.noteId)) {
       this.yjsRooms.set(data.noteId, new Set());
     }
     this.yjsRooms.get(data.noteId)!.add(client.id);
 
-    // Send current doc state (if any)
-    const docState = this.yjsDocs.get(data.noteId);
+    // Send current doc state from Redis
+    const docBuffer = await this.cache.getBuffer(`yjs:doc:${data.noteId}`);
     client.emit('yjs:sync', {
       noteId: data.noteId,
-      update: docState ? Array.from(docState) : [],
+      update: docBuffer ? Array.from(docBuffer) : [],
     });
   }
 
   @SubscribeMessage('yjs:update')
-  handleYjsUpdate(
+  async handleYjsUpdate(
     @MessageBody() data: { noteId: string; update: number[] },
     @ConnectedSocket() client: Socket,
   ) {
     const updateArray = new Uint8Array(data.update);
     const room = `yjs:${data.noteId}`;
 
-    // Properly merge update into stored doc state using Y.mergeUpdates
-    const existing = this.yjsDocs.get(data.noteId);
+    // Merge update into stored doc state in Redis
+    const existing = await this.cache.getBuffer(`yjs:doc:${data.noteId}`);
+    let merged: Uint8Array;
     if (existing) {
-      const merged = Y.mergeUpdates([existing, updateArray]);
-      this.yjsDocs.set(data.noteId, merged);
+      merged = Y.mergeUpdates([new Uint8Array(existing), updateArray]);
     } else {
-      this.yjsDocs.set(data.noteId, updateArray);
+      merged = updateArray;
     }
+    await this.cache.setBuffer(
+      `yjs:doc:${data.noteId}`,
+      Buffer.from(merged),
+      86400, // 24h TTL
+    );
 
     // Broadcast to others in the room
     client.to(room).emit('yjs:update', {
@@ -281,12 +322,17 @@ export class RealtimeGateway
     const clients = this.yjsRooms.get(data.noteId);
     if (clients) {
       clients.delete(client.id);
-      // Cleanup if no more clients
       if (clients.size === 0) {
         this.yjsRooms.delete(data.noteId);
-        // Optionally keep yjsDocs for persistence, or clear:
-        // this.yjsDocs.delete(data.noteId);
+        // Yjs doc stays in Redis for durability (TTL will expire it)
       }
     }
+  }
+
+  // --- Helpers ---
+
+  private async getPresenceUsers(room: string): Promise<PresenceUser[]> {
+    const raw = await this.cache.hgetall(`presence:${room}`);
+    return Object.values(raw).map((json) => JSON.parse(json) as PresenceUser);
   }
 }

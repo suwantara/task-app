@@ -18,16 +18,21 @@ export class ColumnsService {
   ) {}
 
   async create(userId: string, createColumnDto: CreateColumnDto) {
-    // Verify board access
+    // Verify board access — single query with filtered member check
     const board = await this.prisma.board.findUnique({
       where: { id: createColumnDto.boardId },
-      include: { workspace: { include: { members: true } } },
+      include: {
+        workspace: {
+          select: {
+            members: { where: { userId }, take: 1, select: { userId: true } },
+          },
+        },
+      },
     });
 
     if (!board) throw new NotFoundException('Board not found');
 
-    const isMember = board.workspace.members.some((m) => m.userId === userId);
-    if (!isMember) throw new ForbiddenException('Access denied');
+    if (!board.workspace.members[0]) throw new ForbiddenException('Access denied');
 
     // Calculate position if not provided
     let position = createColumnDto.order;
@@ -50,16 +55,21 @@ export class ColumnsService {
   }
 
   async findAll(userId: string, boardId: string) {
-    // Verify access
+    // Verify access — single query with filtered member check
     const board = await this.prisma.board.findUnique({
       where: { id: boardId },
-      include: { workspace: { include: { members: true } } },
+      include: {
+        workspace: {
+          select: {
+            members: { where: { userId }, take: 1, select: { userId: true } },
+          },
+        },
+      },
     });
 
     if (!board) throw new NotFoundException('Board not found');
 
-    const isMember = board.workspace.members.some((m) => m.userId === userId);
-    if (!isMember) throw new ForbiddenException('Access denied');
+    if (!board.workspace.members[0]) throw new ForbiddenException('Access denied');
 
     return this.prisma.column.findMany({
       where: { boardId },
@@ -74,7 +84,11 @@ export class ColumnsService {
       include: {
         board: {
           include: {
-            workspace: { include: { members: true } },
+            workspace: {
+              select: {
+                members: { where: { userId }, take: 1, select: { userId: true } },
+              },
+            },
           },
         },
         tasks: true,
@@ -83,10 +97,8 @@ export class ColumnsService {
 
     if (!column) throw new NotFoundException('Column not found');
 
-    const isMember = column.board.workspace.members.some(
-      (m) => m.userId === userId,
-    );
-    if (!isMember) throw new ForbiddenException('Access denied');
+    if (!column.board.workspace.members[0])
+      throw new ForbiddenException('Access denied');
 
     return column;
   }
@@ -96,17 +108,21 @@ export class ColumnsService {
       where: { id },
       include: {
         board: {
-          include: { workspace: { include: { members: true } } },
+          include: {
+            workspace: {
+              select: {
+                members: { where: { userId }, take: 1, select: { userId: true } },
+              },
+            },
+          },
         },
       },
     });
 
     if (!column) throw new NotFoundException('Column not found');
 
-    const isMember = column.board.workspace.members.some(
-      (m) => m.userId === userId,
-    );
-    if (!isMember) throw new ForbiddenException('Access denied');
+    if (!column.board.workspace.members[0])
+      throw new ForbiddenException('Access denied');
 
     const boardId = column.boardId;
 
@@ -137,17 +153,21 @@ export class ColumnsService {
       where: { id },
       include: {
         board: {
-          include: { workspace: { include: { members: true } } },
+          include: {
+            workspace: {
+              select: {
+                members: { where: { userId }, take: 1, select: { userId: true } },
+              },
+            },
+          },
         },
       },
     });
 
     if (!column) throw new NotFoundException('Column not found');
 
-    const isMember = column.board.workspace.members.some(
-      (m) => m.userId === userId,
-    );
-    if (!isMember) throw new ForbiddenException('Access denied');
+    if (!column.board.workspace.members[0])
+      throw new ForbiddenException('Access denied');
 
     return this.prisma.column.delete({
       where: { id },

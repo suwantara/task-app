@@ -1,12 +1,14 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { useAuth } from '@/contexts/auth-context';
 import { useWorkspace } from '@/contexts/workspace-context';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { format } from 'date-fns';
 import { apiClient } from '@/lib/api';
+import { useAllWorkspaceTasks, useWorkspaceMembers, queryKeys } from '@/hooks/use-queries';
+import { useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -58,12 +60,6 @@ import {
 } from 'lucide-react';
 
 type Priority = 'LOW' | 'MEDIUM' | 'HIGH';
-
-interface Board {
-  id: string;
-  name: string;
-  workspaceId: string;
-}
 
 interface Column {
   id: string;
@@ -123,11 +119,16 @@ export default function TasksTablePage() {
   const { user, loading: authLoading } = useAuth();
   const router = useRouter();
   const { activeWorkspace } = useWorkspace();
+  const workspaceId = activeWorkspace?.id ?? '';
+  const qc = useQueryClient();
 
-  const [boards, setBoards] = useState<Board[]>([]);
-  const [tasks, setTasks] = useState<TaskRow[]>([]);
-  const [members, setMembers] = useState<Member[]>([]);
-  const [loading, setLoading] = useState(true);
+  // React Query
+  const { data: allTasksData, isLoading: loading } = useAllWorkspaceTasks(workspaceId);
+  const { data: membersData = [] } = useWorkspaceMembers(workspaceId);
+
+  const boards = allTasksData?.boards ?? [];
+  const members = membersData as Member[];
+
   const [completedTasks, setCompletedTasks] = useState<Set<string>>(new Set());
 
   // Sort
@@ -150,54 +151,27 @@ export default function TasksTablePage() {
     }
   }, [user, authLoading, router]);
 
-  // Load tasks when workspace changes
-  useEffect(() => {
-    if (activeWorkspace) {
-      loadAllTasks();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeWorkspace?.id]);
-
-  const loadAllTasks = async () => {
-    if (!activeWorkspace) return;
-    setLoading(true);
-
-    try {
-      // Fetch boards and members in parallel
-      const [boardsData, membersData] = await Promise.all([
-        apiClient.getBoards(activeWorkspace.id),
-        apiClient.getWorkspaceMembers(activeWorkspace.id),
-      ]);
-      setBoards(boardsData);
-      setMembers(membersData);
-
-      const allTasks: TaskRow[] = [];
-
-      for (const board of boardsData) {
-        const [columnsData, tasksData] = await Promise.all([
-          apiClient.getColumns(board.id),
-          apiClient.getTasks(board.id),
-        ]);
-
-        const columnMap = new Map(columnsData.map((c) => [c.id, c.name]));
-
-        for (const task of tasksData) {
-          allTasks.push({
-            ...task,
-            boardName: board.name,
-            columnName: columnMap.get(task.columnId) || 'Unknown',
-            completed: completedTasks.has(task.id),
-            columns: columnsData, // Include columns for status dropdown
-          });
-        }
+  // Derive tasks from React Query data
+  const tasks: TaskRow[] = useMemo(() => {
+    if (!allTasksData) return [];
+    const rows: TaskRow[] = [];
+    for (const { board, columns, tasks: boardTasks } of allTasksData.boardResults) {
+      const columnMap = new Map(columns.map((c: Column) => [c.id, c.name]));
+      for (const task of boardTasks) {
+        rows.push({
+          ...(task as Task),
+          boardName: board.name,
+          columnName: columnMap.get((task as Task).columnId) || 'Unknown',
+          completed: completedTasks.has((task as Task).id),
+          columns: columns as Column[],
+        });
       }
-
-      setTasks(allTasks);
-    } catch (error) {
-      console.error('Failed to load tasks:', error);
-    } finally {
-      setLoading(false);
     }
+    return rows;
+  }, [allTasksData, completedTasks]);
+
+  const invalidateTasks = () => {
+    qc.invalidateQueries({ queryKey: queryKeys.allTasks(workspaceId) });
   };
 
   const toggleComplete = (taskId: string) => {
@@ -210,11 +184,6 @@ export default function TasksTablePage() {
       }
       return next;
     });
-    setTasks((prev) =>
-      prev.map((t) =>
-        t.id === taskId ? { ...t, completed: !t.completed } : t
-      )
-    );
   };
 
   const handleSort = (field: SortField) => {
@@ -242,7 +211,7 @@ export default function TasksTablePage() {
         priority: editPriority,
       });
       setEditingTask(null);
-      loadAllTasks();
+      invalidateTasks();
     } catch (error) {
       console.error('Failed to update task:', error);
     }
@@ -251,74 +220,39 @@ export default function TasksTablePage() {
   const handleDeleteTask = async (taskId: string) => {
     try {
       await apiClient.deleteTask(taskId);
-      loadAllTasks();
+      invalidateTasks();
     } catch (error) {
       console.error('Failed to delete task:', error);
     }
   };
 
   // Inline update: Status (column)
-  const handleStatusChange = async (taskId: string, newColumnId: string, task: TaskRow) => {
+  const handleStatusChange = async (taskId: string, newColumnId: string) => {
     try {
-      // Optimistic update
-      setTasks((prev) =>
-        prev.map((t) =>
-          t.id === taskId
-            ? {
-                ...t,
-                columnId: newColumnId,
-                columnName: task.columns.find((c) => c.id === newColumnId)?.name || t.columnName,
-              }
-            : t
-        )
-      );
       await apiClient.updateTask(taskId, { columnId: newColumnId });
+      invalidateTasks();
     } catch (error) {
       console.error('Failed to update status:', error);
-      loadAllTasks(); // Revert on error
     }
   };
 
   // Inline update: Assignee
   const handleAssigneeChange = async (taskId: string, assigneeId: string | null) => {
     try {
-      const member = members.find((m) => m.userId === assigneeId);
-      // Optimistic update
-      setTasks((prev) =>
-        prev.map((t) =>
-          t.id === taskId
-            ? {
-                ...t,
-                assigneeId: assigneeId ?? undefined,
-                assignee: member
-                  ? { id: member.user.id, name: member.user.name, avatarUrl: member.user.avatarUrl }
-                  : undefined,
-              }
-            : t
-        )
-      );
       await apiClient.updateTask(taskId, { assigneeId: assigneeId ?? undefined });
+      invalidateTasks();
     } catch (error) {
       console.error('Failed to update assignee:', error);
-      loadAllTasks(); // Revert on error
     }
   };
 
   // Inline update: Due Date
   const handleDueDateChange = async (taskId: string, date: Date | undefined) => {
     try {
-      // Optimistic update
-      setTasks((prev) =>
-        prev.map((t) =>
-          t.id === taskId
-            ? { ...t, dueDate: date?.toISOString() }
-            : t
-        )
-      );
       await apiClient.updateTask(taskId, { dueDate: date?.toISOString() });
+      invalidateTasks();
     } catch (error) {
       console.error('Failed to update due date:', error);
-      loadAllTasks(); // Revert on error
     }
   };
 
@@ -536,7 +470,7 @@ export default function TasksTablePage() {
                     <TableCell>
                       <Select
                         value={task.columnId}
-                        onValueChange={(value) => handleStatusChange(task.id, value, task)}
+                        onValueChange={(value) => handleStatusChange(task.id, value)}
                       >
                         <SelectTrigger className="h-8 w-[120px] text-xs">
                           <SelectValue placeholder="Status" />

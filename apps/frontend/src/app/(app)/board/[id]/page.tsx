@@ -5,6 +5,8 @@ import { useAuth } from '@/contexts/auth-context';
 import { useRouter, useParams } from 'next/navigation';
 import { apiClient } from '@/lib/api';
 import { useBoardRealtime } from '@/hooks/use-realtime';
+import { useBoard, useColumns as useColumnsQuery, useTasks as useTasksQuery, queryKeys } from '@/hooks/use-queries';
+import { useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -85,11 +87,20 @@ export default function BoardPage() {
   const router = useRouter();
   const params = useParams();
   const boardId = params.id as string;
+  const qc = useQueryClient();
 
-  const [board, setBoard] = useState<Board | null>(null);
-  const [columns, setColumns] = useState<Column[]>([]);
-  const [tasks, setTasks] = useState<Task[]>([]);
-  const [loading, setLoading] = useState(true);
+  // React Query
+  const { data: board = null, isLoading: boardLoading } = useBoard(boardId);
+  const { data: columnsRaw = [], isLoading: colsLoading } = useColumnsQuery(boardId);
+  const { data: tasks = [], isLoading: tasksLoading } = useTasksQuery(boardId);
+  const columns = [...(columnsRaw as Column[])].sort((a, b) => a.position - b.position);
+  const loading = boardLoading || colsLoading || tasksLoading;
+
+  const invalidateBoard = useCallback(() => {
+    qc.invalidateQueries({ queryKey: queryKeys.board(boardId) });
+    qc.invalidateQueries({ queryKey: queryKeys.columns(boardId) });
+    qc.invalidateQueries({ queryKey: queryKeys.tasks(boardId) });
+  }, [qc, boardId]);
 
   // Create column
   const [addingColumn, setAddingColumn] = useState(false);
@@ -114,33 +125,41 @@ export default function BoardPage() {
   // Realtime collaboration
   const { emitTaskMove } = useBoardRealtime(boardId, {
     onTaskCreated: (task) => {
-      setTasks((prev) => {
-        const t = task as Task;
-        if (prev.some((p) => p.id === t.id)) return prev;
-        return [...prev, t];
+      const t = task as Task;
+      qc.setQueryData(queryKeys.tasks(boardId), (old: Task[] | undefined) => {
+        if (!old) return [t];
+        if (old.some((p) => p.id === t.id)) return old;
+        return [...old, t];
       });
     },
     onTaskUpdated: (task) => {
       const t = task as Task;
-      setTasks((prev) => prev.map((p) => (p.id === t.id ? t : p)));
+      qc.setQueryData(queryKeys.tasks(boardId), (old: Task[] | undefined) =>
+        old ? old.map((p) => (p.id === t.id ? t : p)) : old,
+      );
     },
     onTaskDeleted: (data) => {
-      setTasks((prev) => prev.filter((p) => p.id !== data.id));
+      qc.setQueryData(queryKeys.tasks(boardId), (old: Task[] | undefined) =>
+        old ? old.filter((p) => p.id !== data.id) : old,
+      );
     },
     onTaskMoved: (data) => {
-      setTasks((prev) =>
-        prev.map((t) =>
-          t.id === data.taskId
-            ? { ...t, columnId: data.toColumnId, position: data.position }
-            : t,
-        ),
+      qc.setQueryData(queryKeys.tasks(boardId), (old: Task[] | undefined) =>
+        old
+          ? old.map((t) =>
+              t.id === data.taskId
+                ? { ...t, columnId: data.toColumnId, position: data.position }
+                : t,
+            )
+          : old,
       );
     },
     onColumnCreated: (column) => {
-      setColumns((prev) => {
-        const c = column as Column;
-        if (prev.some((p) => p.id === c.id)) return prev;
-        return [...prev, c].toSorted((a, b) => a.position - b.position);
+      const c = column as Column;
+      qc.setQueryData(queryKeys.columns(boardId), (old: Column[] | undefined) => {
+        if (!old) return [c];
+        if (old.some((p) => p.id === c.id)) return old;
+        return [...old, c].toSorted((a, b) => a.position - b.position);
       });
     },
   });
@@ -150,29 +169,6 @@ export default function BoardPage() {
       router.push('/auth/login');
     }
   }, [user, authLoading, router]);
-
-  const loadBoardData = useCallback(async () => {
-    try {
-      const [boardData, columnsData, tasksData] = await Promise.all([
-        apiClient.getBoard(boardId),
-        apiClient.getColumns(boardId),
-        apiClient.getTasks(boardId),
-      ]);
-      setBoard(boardData);
-      setColumns(columnsData.toSorted((a: Column, b: Column) => a.position - b.position));
-      setTasks(tasksData);
-    } catch (error) {
-      console.error('Failed to load board data:', error);
-    } finally {
-      setLoading(false);
-    }
-  }, [boardId]);
-
-  useEffect(() => {
-    if (user && boardId) {
-      loadBoardData();
-    }
-  }, [user, boardId, loadBoardData]);
 
   // Focus on input when adding column
   useEffect(() => {
@@ -197,7 +193,7 @@ export default function BoardPage() {
     setAddingColumn(false);
     try {
       await apiClient.createColumn(boardId, name, columns.length);
-      loadBoardData();
+      invalidateBoard();
     } catch (error) {
       console.error('Failed to create column:', error);
     }
@@ -209,16 +205,16 @@ export default function BoardPage() {
     const title = newCardTitle;
     setNewCardTitle('');
     setAddingCardColumnId(null);
-    const columnTasks = tasks.filter((t) => t.columnId === columnId);
+    const columnTasks = tasks.filter((t: Task) => t.columnId === columnId);
     try {
       await apiClient.createTask({
-        workspaceId: board.workspaceId,
+        workspaceId: (board as Board).workspaceId,
         boardId,
         columnId,
         title,
         position: columnTasks.length,
       });
-      loadBoardData();
+      invalidateBoard();
     } catch (error) {
       console.error('Failed to create task:', error);
     }
@@ -240,7 +236,7 @@ export default function BoardPage() {
         priority: editPriority,
       });
       setEditingTask(null);
-      loadBoardData();
+      invalidateBoard();
     } catch (error) {
       console.error('Failed to update task:', error);
     }
@@ -249,7 +245,7 @@ export default function BoardPage() {
   const handleDeleteTask = async (taskId: string) => {
     try {
       await apiClient.deleteTask(taskId);
-      loadBoardData();
+      invalidateBoard();
     } catch (error) {
       console.error('Failed to delete task:', error);
     }
@@ -276,17 +272,19 @@ export default function BoardPage() {
       return;
     }
 
-    const columnTasks = tasks.filter((t) => t.columnId === columnId);
+    const columnTasks = (tasks as Task[]).filter((t) => t.columnId === columnId);
     const fromColumnId = draggedTask.columnId;
     const newPosition = columnTasks.length;
 
-    // Optimistic update
-    setTasks((prev) =>
-      prev.map((t) =>
-        t.id === draggedTask.id
-          ? { ...t, columnId, position: newPosition }
-          : t,
-      ),
+    // Optimistic update via React Query cache
+    qc.setQueryData(queryKeys.tasks(boardId), (old: Task[] | undefined) =>
+      old
+        ? old.map((t) =>
+            t.id === draggedTask.id
+              ? { ...t, columnId, position: newPosition }
+              : t,
+          )
+        : old,
     );
 
     // Emit realtime event
@@ -299,7 +297,7 @@ export default function BoardPage() {
       } as Partial<{ workspaceId: string; boardId: string; columnId: string; title: string; description?: string; priority?: 'LOW' | 'MEDIUM' | 'HIGH'; dueDate?: string; position: number }>);
     } catch (error) {
       console.error('Failed to move task:', error);
-      loadBoardData(); // Revert on error
+      invalidateBoard(); // Revert on error
     } finally {
       setDraggedTask(null);
       setDragOverColumn(null);

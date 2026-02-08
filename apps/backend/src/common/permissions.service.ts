@@ -32,50 +32,117 @@ export class PermissionsService {
     return member;
   }
 
+  /**
+   * Single-query board access check — fetches board + verifies membership in one round-trip.
+   */
   async validateBoardAccess(
     userId: string,
     boardId: string,
   ): Promise<WorkspaceMember> {
     const board = await this.prisma.board.findUnique({
       where: { id: boardId },
-      select: { workspaceId: true },
+      select: {
+        workspaceId: true,
+        workspace: {
+          select: {
+            members: {
+              where: { userId },
+              take: 1,
+            },
+          },
+        },
+      },
     });
 
     if (!board) {
       throw new NotFoundException('Board not found');
     }
 
-    return this.validateWorkspaceAccess(userId, board.workspaceId);
+    const member = board.workspace.members[0];
+    if (!member) {
+      throw new ForbiddenException(
+        'Access denied: You are not a member of this workspace',
+      );
+    }
+
+    return member;
   }
 
+  /**
+   * Single-query column access check — fetches column → board → membership in one round-trip.
+   */
   async validateColumnAccess(
     userId: string,
     columnId: string,
   ): Promise<{ member: WorkspaceMember; boardId: string }> {
     const column = await this.prisma.column.findUnique({
       where: { id: columnId },
-      select: { boardId: true },
+      select: {
+        boardId: true,
+        board: {
+          select: {
+            workspaceId: true,
+            workspace: {
+              select: {
+                members: {
+                  where: { userId },
+                  take: 1,
+                },
+              },
+            },
+          },
+        },
+      },
     });
 
     if (!column) {
       throw new NotFoundException('Column not found');
     }
 
-    const member = await this.validateBoardAccess(userId, column.boardId);
+    const member = column.board.workspace.members[0];
+    if (!member) {
+      throw new ForbiddenException(
+        'Access denied: You are not a member of this workspace',
+      );
+    }
+
     return { member, boardId: column.boardId };
   }
 
-  async validateTaskAccess(userId: string, taskId: string): Promise<void> {
+  /**
+   * Single-query task access check — fetches task + membership in one round-trip.
+   */
+  async validateTaskAccess(
+    userId: string,
+    taskId: string,
+  ): Promise<{ workspaceId: string; boardId: string }> {
     const task = await this.prisma.task.findUnique({
       where: { id: taskId },
-      select: { workspaceId: true },
+      select: {
+        workspaceId: true,
+        boardId: true,
+        workspace: {
+          select: {
+            members: {
+              where: { userId },
+              take: 1,
+            },
+          },
+        },
+      },
     });
 
     if (!task) {
       throw new NotFoundException('Task not found');
     }
 
-    await this.validateWorkspaceAccess(userId, task.workspaceId);
+    if (!task.workspace.members[0]) {
+      throw new ForbiddenException(
+        'Access denied: You are not a member of this workspace',
+      );
+    }
+
+    return { workspaceId: task.workspaceId, boardId: task.boardId };
   }
 
   /**

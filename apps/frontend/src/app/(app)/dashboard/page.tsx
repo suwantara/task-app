@@ -1,10 +1,10 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { useAuth } from '@/contexts/auth-context';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { apiClient } from '@/lib/api';
+import { useWorkspaces, useCreateWorkspace } from '@/hooks/use-queries';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -19,64 +19,29 @@ import {
 } from '@/components/ui/dialog';
 import { Plus } from 'lucide-react';
 
-interface Workspace {
-  id: string;
-  name: string;
-  ownerId: string;
-  createdAt: string;
-  updatedAt: string;
-}
-
 export default function DashboardPage() {
   const { user, loading: authLoading } = useAuth();
   const router = useRouter();
-  const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { data: workspaces = [], isLoading } = useWorkspaces({ enabled: !!user }) as { data: { id: string; name: string; createdAt: string }[]; isLoading: boolean };
+  const createWorkspace = useCreateWorkspace();
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [newWorkspaceName, setNewWorkspaceName] = useState('');
-  const [creating, setCreating] = useState(false);
 
-  useEffect(() => {
-    if (!authLoading && !user) {
-      router.push('/auth/login');
-    }
-  }, [user, authLoading, router]);
-
-  useEffect(() => {
-    if (user) {
-      loadWorkspaces();
-    }
-  }, [user]);
-
-  const loadWorkspaces = async () => {
-    try {
-      const data = await apiClient.getWorkspaces();
-      setWorkspaces(data);
-    } catch (error) {
-      console.error('Failed to load workspaces:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
+  if (!authLoading && !user) {
+    router.push('/auth/login');
+    return null;
+  }
 
   const handleCreateWorkspace = async (e: React.BaseSyntheticEvent) => {
     e.preventDefault();
-    if (!newWorkspaceName.trim() || creating) return;
-    setCreating(true);
+    if (!newWorkspaceName.trim() || createWorkspace.isPending) return;
 
-    try {
-      await apiClient.createWorkspace(newWorkspaceName);
-      setNewWorkspaceName('');
-      setShowCreateModal(false);
-      loadWorkspaces();
-    } catch (error) {
-      console.error('Failed to create workspace:', error);
-    } finally {
-      setCreating(false);
-    }
+    await createWorkspace.mutateAsync(newWorkspaceName);
+    setNewWorkspaceName('');
+    setShowCreateModal(false);
   };
 
-  if (authLoading || loading) {
+  if (authLoading || isLoading) {
     return (
       <div className="flex items-center justify-center p-12">
         <div className="text-lg text-muted-foreground">Loading...</div>
@@ -95,7 +60,7 @@ export default function DashboardPage() {
       </div>
 
       <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-          {workspaces.map((workspace) => (
+          {(workspaces as { id: string; name: string; createdAt: string }[]).map((workspace) => (
             <Link key={workspace.id} href={`/workspace/${workspace.id}`}>
               <Card className="hover:shadow-lg transition-shadow cursor-pointer">
                 <CardHeader>
@@ -151,7 +116,7 @@ export default function DashboardPage() {
               >
                 Cancel
               </Button>
-              <Button type="submit" disabled={creating}>Create</Button>
+              <Button type="submit" disabled={createWorkspace.isPending}>Create</Button>
             </DialogFooter>
           </form>
         </DialogContent>

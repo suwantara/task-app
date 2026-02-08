@@ -1,11 +1,11 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/auth-context';
 import { useWorkspace } from '@/contexts/workspace-context';
-import { apiClient } from '@/lib/api';
+import { useBoards, useUpdateBoard, useDeleteBoard } from '@/hooks/use-queries';
 import { ShareDialog } from '@/components/share-dialog';
 import { WorkspaceMembers } from '@/components/workspace-members';
 import { JoinWorkspaceDialog } from '@/components/join-workspace-dialog';
@@ -87,7 +87,11 @@ export function AppSidebar() {
   // Use workspace context instead of local state
   const { workspaces, activeWorkspace, setActiveWorkspace } = useWorkspace();
 
-  const [boards, setBoards] = useState<Board[]>([]);
+  // React Query: boards
+  const { data: boards = [] } = useBoards(activeWorkspace?.id || '');
+  const updateBoardMutation = useUpdateBoard();
+  const deleteBoardMutation = useDeleteBoard();
+
   const [shareOpen, setShareOpen] = useState(false);
   const [renamingBoard, setRenamingBoard] = useState<Board | null>(null);
   const [renameValue, setRenameValue] = useState('');
@@ -96,36 +100,20 @@ export function AppSidebar() {
   // Helper to check if current user is owner (with fallback to members array)
   const isCurrentUserOwner = (workspace: typeof activeWorkspace) => {
     if (!workspace || !user?.id) return false;
-    // Primary check: ownerId field
     if (workspace.ownerId === user.id) return true;
-    // Fallback: check members array for OWNER role
     const currentMember = workspace.members?.find(m => m.userId === user.id);
     return currentMember?.role === 'OWNER';
   };
 
-  const fetchBoards = async (workspaceId: string) => {
-    try {
-      const data = await apiClient.getBoards(workspaceId);
-      setBoards(data);
-    } catch (error) {
-      console.error('Failed to load boards:', error);
-    }
-  };
-
-  useEffect(() => {
-    if (!activeWorkspace) return;
-    // Async data fetching in effect is a valid pattern
-    (async () => {
-      await fetchBoards(activeWorkspace.id);
-    })();
-  }, [activeWorkspace]);
-
   const handleRenameBoard = async () => {
     if (!renamingBoard || !renameValue.trim() || !activeWorkspace) return;
     try {
-      await apiClient.updateBoard(renamingBoard.id, { name: renameValue });
+      await updateBoardMutation.mutateAsync({
+        id: renamingBoard.id,
+        workspaceId: activeWorkspace.id,
+        name: renameValue,
+      });
       setRenamingBoard(null);
-      fetchBoards(activeWorkspace.id);
     } catch (error) {
       console.error('Failed to rename board:', error);
     }
@@ -134,13 +122,14 @@ export function AppSidebar() {
   const handleDeleteBoard = async () => {
     if (!deletingBoard || !activeWorkspace) return;
     try {
-      await apiClient.deleteBoard(deletingBoard.id);
+      await deleteBoardMutation.mutateAsync({
+        id: deletingBoard.id,
+        workspaceId: activeWorkspace.id,
+      });
       setDeletingBoard(null);
-      // If the deleted board is currently open, navigate to workspace
       if (pathname.startsWith(`/board/${deletingBoard.id}`)) {
         router.push(`/workspace/${activeWorkspace.id}`);
       }
-      fetchBoards(activeWorkspace.id);
     } catch (error) {
       console.error('Failed to delete board:', error);
     }

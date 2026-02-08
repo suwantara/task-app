@@ -111,7 +111,11 @@ export class BoardsService {
       include: {
         workspace: {
           include: {
-            members: true,
+            members: {
+              where: { userId },
+              take: 1,
+              select: { userId: true, role: true },
+            },
           },
         },
         columns: {
@@ -136,8 +140,7 @@ export class BoardsService {
     }
 
     // Check access
-    const isMember = board.workspace.members.some((m) => m.userId === userId);
-    if (!isMember) {
+    if (!board.workspace.members[0]) {
       throw new ForbiddenException('You do not have access to this board');
     }
 
@@ -150,13 +153,18 @@ export class BoardsService {
   async update(id: string, userId: string, updateBoardDto: UpdateBoardDto) {
     const board = await this.prisma.board.findUnique({
       where: { id },
-      include: { workspace: { include: { members: true } } },
+      include: {
+        workspace: {
+          select: {
+            members: { where: { userId }, take: 1, select: { userId: true } },
+          },
+        },
+      },
     });
 
     if (!board) throw new NotFoundException('Board not found');
 
-    const isMember = board.workspace.members.some((m) => m.userId === userId);
-    if (!isMember) throw new ForbiddenException('Access denied');
+    if (!board.workspace.members[0]) throw new ForbiddenException('Access denied');
 
     const updated = await this.prisma.board.update({
       where: { id },
@@ -175,7 +183,17 @@ export class BoardsService {
   async remove(id: string, userId: string) {
     const board = await this.prisma.board.findUnique({
       where: { id },
-      include: { workspace: { include: { members: true } } },
+      select: {
+        id: true,
+        workspaceId: true,
+        creatorId: true,
+        workspace: {
+          select: {
+            ownerId: true,
+            members: { where: { userId }, take: 1, select: { userId: true } },
+          },
+        },
+      },
     });
 
     if (!board) throw new NotFoundException('Board not found');

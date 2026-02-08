@@ -18,10 +18,12 @@ export const queryKeys = {
   board: (id: string) => ['board', id] as const,
   columns: (boardId: string) => ['columns', boardId] as const,
   tasks: (boardId: string) => ['tasks', boardId] as const,
+  allTasks: (workspaceId: string) => ['allTasks', workspaceId] as const,
   notes: (workspaceId: string) => ['notes', workspaceId] as const,
   note: (id: string) => ['note', id] as const,
   members: (workspaceId: string) => ['members', workspaceId] as const,
   inviteLinks: (workspaceId: string) => ['inviteLinks', workspaceId] as const,
+  joinCodes: (workspaceId: string) => ['joinCodes', workspaceId] as const,
 };
 
 // ─── Query Hooks ───────────────────────────────────────────────
@@ -98,6 +100,27 @@ export function useWorkspaceMembers(workspaceId: string) {
   });
 }
 
+/** Fetches ALL tasks across all boards in a workspace (aggregated). */
+export function useAllWorkspaceTasks(workspaceId: string) {
+  return useQuery({
+    queryKey: queryKeys.allTasks(workspaceId),
+    queryFn: async () => {
+      const boards = await apiClient.getBoards(workspaceId);
+      const boardResults = await Promise.all(
+        boards.map(async (board: { id: string; name: string }) => {
+          const [columns, tasks] = await Promise.all([
+            apiClient.getColumns(board.id),
+            apiClient.getTasks(board.id),
+          ]);
+          return { board, columns, tasks };
+        }),
+      );
+      return { boards, boardResults };
+    },
+    enabled: !!workspaceId,
+  });
+}
+
 // ─── Mutation Hooks ────────────────────────────────────────────
 
 export function useCreateWorkspace() {
@@ -124,10 +147,11 @@ export function useCreateBoard() {
 export function useUpdateBoard() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (data: { id: string; name?: string; description?: string }) =>
+    mutationFn: (data: { id: string; workspaceId: string; name?: string; description?: string }) =>
       apiClient.updateBoard(data.id, { name: data.name, description: data.description }),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['boards'] });
+    onSuccess: (_result, variables) => {
+      qc.invalidateQueries({ queryKey: queryKeys.boards(variables.workspaceId) });
+      qc.invalidateQueries({ queryKey: queryKeys.board(variables.id) });
     },
   });
 }
@@ -135,9 +159,10 @@ export function useUpdateBoard() {
 export function useDeleteBoard() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (id: string) => apiClient.deleteBoard(id),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['boards'] });
+    mutationFn: (data: { id: string; workspaceId: string }) =>
+      apiClient.deleteBoard(data.id),
+    onSuccess: (_result, variables) => {
+      qc.invalidateQueries({ queryKey: queryKeys.boards(variables.workspaceId) });
     },
   });
 }
@@ -211,6 +236,79 @@ export function useUpdateNote() {
     onSuccess: (_result, variables) => {
       qc.invalidateQueries({ queryKey: queryKeys.notes(variables.workspaceId) });
       qc.invalidateQueries({ queryKey: queryKeys.note(variables.id) });
+    },
+  });
+}
+
+export function useDeleteNote() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data: { id: string; workspaceId: string }) =>
+      apiClient.deleteNote(data.id),
+    onSuccess: (_result, variables) => {
+      qc.invalidateQueries({ queryKey: queryKeys.notes(variables.workspaceId) });
+    },
+  });
+}
+
+// ─── Share Dialog Hooks ────────────────────────────────────────
+
+export function useInviteLinks(workspaceId: string) {
+  return useQuery({
+    queryKey: queryKeys.inviteLinks(workspaceId),
+    queryFn: () => apiClient.getInviteLinks(workspaceId).catch(() => []),
+    enabled: !!workspaceId,
+  });
+}
+
+export function useJoinCodes(workspaceId: string, enabled = true) {
+  return useQuery({
+    queryKey: queryKeys.joinCodes(workspaceId),
+    queryFn: () => apiClient.getJoinCodes(workspaceId).catch(() => null),
+    enabled: !!workspaceId && enabled,
+  });
+}
+
+export function useRevokeInviteLink() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data: { linkId: string; workspaceId: string }) =>
+      apiClient.revokeInviteLink(data.linkId),
+    onSuccess: (_result, variables) => {
+      qc.invalidateQueries({ queryKey: queryKeys.inviteLinks(variables.workspaceId) });
+    },
+  });
+}
+
+export function useUpdateMemberRole() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data: { workspaceId: string; memberId: string; role: string }) =>
+      apiClient.updateMemberRole(data.workspaceId, data.memberId, data.role),
+    onSuccess: (_result, variables) => {
+      qc.invalidateQueries({ queryKey: queryKeys.members(variables.workspaceId) });
+    },
+  });
+}
+
+export function useRemoveMember() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data: { workspaceId: string; memberId: string }) =>
+      apiClient.removeMember(data.workspaceId, data.memberId),
+    onSuccess: (_result, variables) => {
+      qc.invalidateQueries({ queryKey: queryKeys.members(variables.workspaceId) });
+    },
+  });
+}
+
+export function useRegenerateJoinCode() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data: { workspaceId: string; role: 'EDITOR' | 'VIEWER' }) =>
+      apiClient.regenerateJoinCode(data.workspaceId, data.role),
+    onSuccess: (_result, variables) => {
+      qc.invalidateQueries({ queryKey: queryKeys.joinCodes(variables.workspaceId) });
     },
   });
 }

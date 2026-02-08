@@ -56,6 +56,9 @@ export class NotesService {
     // Invalidate notes list cache
     await this.cache.del(this.getCacheKey.notesList(createNoteDto.workspaceId));
 
+    // Broadcast creation so other clients update in realtime
+    this.realtime.emitNoteCreated(createNoteDto.workspaceId, note);
+
     return note;
   }
 
@@ -93,13 +96,7 @@ export class NotesService {
     // Try cache first
     const cacheKey = this.getCacheKey.note(id);
     const cached = await this.cache.get(cacheKey);
-    if (cached) {
-      const note = cached as {
-        workspace: { members: { userId: string }[] };
-      };
-      const isMember = note.workspace.members.some((m) => m.userId === userId);
-      if (isMember) return cached;
-    }
+    if (cached) return cached;
 
     const note = await this.prisma.note.findUnique({
       where: { id },
@@ -108,15 +105,20 @@ export class NotesService {
           select: { id: true, name: true, avatarUrl: true },
         },
         workspace: {
-          include: { members: true },
+          select: {
+            members: {
+              where: { userId },
+              take: 1,
+              select: { userId: true },
+            },
+          },
         },
       },
     });
 
     if (!note) throw new NotFoundException('Note not found');
 
-    const isMember = note.workspace.members.some((m) => m.userId === userId);
-    if (!isMember) throw new ForbiddenException('Access denied');
+    if (!note.workspace.members[0]) throw new ForbiddenException('Access denied');
 
     // Cache the result
     await this.cache.set(cacheKey, note, 120);
@@ -125,19 +127,26 @@ export class NotesService {
   }
 
   async update(id: string, userId: string, updateNoteDto: UpdateNoteDto) {
-    // Fetch current state with all relations needed for cache/permissions
+    // Fetch current state with filtered member check
     const note = await this.prisma.note.findUnique({
       where: { id },
       include: {
         creator: { select: { id: true, name: true, avatarUrl: true } },
-        workspace: { include: { members: true } },
+        workspace: {
+          select: {
+            members: {
+              where: { userId },
+              take: 1,
+              select: { userId: true },
+            },
+          },
+        },
       },
     });
 
     if (!note) throw new NotFoundException('Note not found');
 
-    const isMember = note.workspace.members.some((m) => m.userId === userId);
-    if (!isMember) throw new ForbiddenException('Access denied');
+    if (!note.workspace.members[0]) throw new ForbiddenException('Access denied');
 
     // 1. Optimistic Update & Save to Redis immediately
     const optimisticNote = {
@@ -150,17 +159,16 @@ export class NotesService {
     // 2. Broadcast to other users immediately
     this.realtime.emitNoteUpdated(note.workspaceId, optimisticNote);
 
-    // 3. Persist to Database
+    // 3. Persist to Database (no need to include workspace.members in response)
     const updated = await this.prisma.note.update({
       where: { id },
       data: updateNoteDto,
       include: {
         creator: { select: { id: true, name: true, avatarUrl: true } },
-        workspace: { include: { members: true } },
       },
     });
 
-    // 4. Update cache with authoritative DB result (ensure consistency)
+    // 4. Update cache with authoritative DB result
     await this.cache.set(this.getCacheKey.note(id), updated);
 
     // Invalidate list cache
@@ -172,13 +180,22 @@ export class NotesService {
   async remove(id: string, userId: string) {
     const note = await this.prisma.note.findUnique({
       where: { id },
-      include: { workspace: { include: { members: true } } },
+      include: {
+        workspace: {
+          select: {
+            members: {
+              where: { userId },
+              take: 1,
+              select: { userId: true },
+            },
+          },
+        },
+      },
     });
 
     if (!note) throw new NotFoundException('Note not found');
 
-    const isMember = note.workspace.members.some((m) => m.userId === userId);
-    if (!isMember) throw new ForbiddenException('Access denied');
+    if (!note.workspace.members[0]) throw new ForbiddenException('Access denied');
 
     const deleted = await this.prisma.note.delete({
       where: { id },
@@ -189,6 +206,9 @@ export class NotesService {
       this.cache.del(this.getCacheKey.note(id)),
       this.cache.del(this.getCacheKey.notesList(note.workspaceId)),
     ]);
+
+    // Broadcast deletion so other clients update in realtime
+    this.realtime.emitNoteDeleted(note.workspaceId, id);
 
     return deleted;
   }

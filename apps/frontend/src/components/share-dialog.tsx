@@ -1,7 +1,15 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
-import { apiClient } from '@/lib/api';
+import { useState } from 'react';
+import {
+  useWorkspaceMembers,
+  useInviteLinks,
+  useJoinCodes,
+  useRevokeInviteLink,
+  useUpdateMemberRole,
+  useRemoveMember,
+  useRegenerateJoinCode,
+} from '@/hooks/use-queries';
 import {
   Dialog,
   DialogContent,
@@ -77,37 +85,16 @@ export function ShareDialog({
   currentUserId,
   isOwner,
 }: Readonly<ShareDialogProps>) {
-  const [members, setMembers] = useState<Member[]>([]);
-  const [inviteLinks, setInviteLinks] = useState<InviteLink[]>([]);
-  const [joinCodes, setJoinCodes] = useState<{ editorJoinCode: string; viewerJoinCode: string } | null>(null);
-  const [loading, setLoading] = useState(false);
+  const { data: members = [], isLoading: membersLoading } = useWorkspaceMembers(workspaceId);
+  const { data: inviteLinks = [] } = useInviteLinks(workspaceId);
+  const { data: joinCodes = null } = useJoinCodes(workspaceId, isOwner);
+
+  const revokeLinkMutation = useRevokeInviteLink();
+  const updateRoleMutation = useUpdateMemberRole();
+  const removeMemberMutation = useRemoveMember();
+  const regenerateCodeMutation = useRegenerateJoinCode();
+
   const [copiedId, setCopiedId] = useState<string | null>(null);
-  const [regeneratingCode, setRegeneratingCode] = useState<string | null>(null);
-
-  const loadData = useCallback(async () => {
-    if (!workspaceId) return;
-    setLoading(true);
-    try {
-      const [membersData, linksData, codesData] = await Promise.all([
-        apiClient.getWorkspaceMembers(workspaceId),
-        apiClient.getInviteLinks(workspaceId).catch(() => []),
-        isOwner ? apiClient.getJoinCodes(workspaceId).catch(() => null) : Promise.resolve(null),
-      ]);
-      setMembers(membersData);
-      setInviteLinks(linksData);
-      setJoinCodes(codesData);
-    } catch (error) {
-      console.error('Failed to load share data:', error);
-    } finally {
-      setLoading(false);
-    }
-  }, [workspaceId, isOwner]);
-
-  useEffect(() => {
-    if (open) {
-      loadData();
-    }
-  }, [open, loadData]);
 
   const handleCopyLink = async (token: string, linkId: string) => {
     const url = `${globalThis.location.origin}/join/${token}`;
@@ -123,21 +110,16 @@ export function ShareDialog({
   };
 
   const handleRegenerateCode = async (role: 'EDITOR' | 'VIEWER') => {
-    setRegeneratingCode(role);
     try {
-      await apiClient.regenerateJoinCode(workspaceId, role);
-      await loadData();
+      await regenerateCodeMutation.mutateAsync({ workspaceId, role });
     } catch (error) {
       console.error('Failed to regenerate code:', error);
-    } finally {
-      setRegeneratingCode(null);
     }
   };
 
   const handleRevokeLink = async (linkId: string) => {
     try {
-      await apiClient.revokeInviteLink(linkId);
-      await loadData();
+      await revokeLinkMutation.mutateAsync({ linkId, workspaceId });
     } catch (error) {
       console.error('Failed to revoke link:', error);
     }
@@ -145,8 +127,7 @@ export function ShareDialog({
 
   const handleUpdateRole = async (memberId: string, role: string) => {
     try {
-      await apiClient.updateMemberRole(workspaceId, memberId, role);
-      await loadData();
+      await updateRoleMutation.mutateAsync({ workspaceId, memberId, role });
     } catch (error) {
       console.error('Failed to update role:', error);
     }
@@ -154,8 +135,7 @@ export function ShareDialog({
 
   const handleRemoveMember = async (memberId: string) => {
     try {
-      await apiClient.removeMember(workspaceId, memberId);
-      await loadData();
+      await removeMemberMutation.mutateAsync({ workspaceId, memberId });
     } catch (error) {
       console.error('Failed to remove member:', error);
     }
@@ -254,7 +234,7 @@ export function ShareDialog({
 
           {/* Members Tab */}
           <TabsContent value="members" className="space-y-3">
-            {loading ? (
+            {membersLoading ? (
               <div className="flex items-center justify-center py-8">
                 <Loader2 className="size-5 animate-spin text-muted-foreground" />
               </div>
@@ -334,9 +314,9 @@ export function ShareDialog({
                         variant="ghost"
                         className="size-8"
                         onClick={() => handleRegenerateCode('EDITOR')}
-                        disabled={regeneratingCode === 'EDITOR'}
+                        disabled={regenerateCodeMutation.isPending && regenerateCodeMutation.variables?.role === 'EDITOR'}
                       >
-                        <RefreshCw className={`size-4 ${regeneratingCode === 'EDITOR' ? 'animate-spin' : ''}`} />
+                        <RefreshCw className={`size-4 ${regenerateCodeMutation.isPending && regenerateCodeMutation.variables?.role === 'EDITOR' ? 'animate-spin' : ''}`} />
                       </Button>
                     </div>
                   </div>
@@ -372,9 +352,9 @@ export function ShareDialog({
                         variant="ghost"
                         className="size-8"
                         onClick={() => handleRegenerateCode('VIEWER')}
-                        disabled={regeneratingCode === 'VIEWER'}
+                        disabled={regenerateCodeMutation.isPending && regenerateCodeMutation.variables?.role === 'VIEWER'}
                       >
-                        <RefreshCw className={`size-4 ${regeneratingCode === 'VIEWER' ? 'animate-spin' : ''}`} />
+                        <RefreshCw className={`size-4 ${regenerateCodeMutation.isPending && regenerateCodeMutation.variables?.role === 'VIEWER' ? 'animate-spin' : ''}`} />
                       </Button>
                     </div>
                   </div>
@@ -438,7 +418,7 @@ export function ShareDialog({
               </div>
             ) : (
               <div className="py-8 text-center text-sm text-muted-foreground">
-                {loading ? (
+                {membersLoading ? (
                   <Loader2 className="size-5 animate-spin mx-auto" />
                 ) : (
                   'Only workspace owners can view join codes'

@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { useAuth } from '@/contexts/auth-context';
 import { useRouter, useParams } from 'next/navigation';
 import Link from 'next/link';
-import { apiClient } from '@/lib/api';
+import { useWorkspace, useBoards, useWorkspaceMembers, useCreateBoard, useUpdateBoard, useDeleteBoard } from '@/hooks/use-queries';
 import { Button } from '@/components/ui/button';
 import { Card, CardDescription, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -73,14 +73,21 @@ export default function WorkspacePage() {
   const params = useParams();
   const workspaceId = params.id as string;
 
-  const [workspace, setWorkspace] = useState<Workspace | null>(null);
-  const [boards, setBoards] = useState<Board[]>([]);
-  const [loading, setLoading] = useState(true);
+  // React Query
+  const { data: workspaceData, isLoading: wsLoading } = useWorkspace(workspaceId);
+  const { data: boards = [], isLoading: boardsLoading } = useBoards(workspaceId);
+  const { data: membersData = [] } = useWorkspaceMembers(workspaceId);
+  const createBoardMutation = useCreateBoard();
+  const updateBoardMutation = useUpdateBoard();
+  const deleteBoardMutation = useDeleteBoard();
+
+  const workspace = workspaceData ? { ...workspaceData, members: membersData } as Workspace : null;
+  const loading = wsLoading || boardsLoading;
+
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
   const [newBoardName, setNewBoardName] = useState('');
   const [newBoardDescription, setNewBoardDescription] = useState('');
-  const [creating, setCreating] = useState(false);
 
   // Rename
   const [renamingBoard, setRenamingBoard] = useState<Board | null>(null);
@@ -106,53 +113,25 @@ export default function WorkspacePage() {
   };
 
 
-  const loadWorkspaceData = async () => {
-    try {
-      const [workspaceData, boardsData, membersData] = await Promise.all([
-        apiClient.getWorkspace(workspaceId),
-        apiClient.getBoards(workspaceId),
-        apiClient.getWorkspaceMembers(workspaceId).catch(() => []),
-      ]);
-      setWorkspace({ ...workspaceData, members: membersData } as Workspace);
-      setBoards(boardsData);
-    } catch (error) {
-      console.error('Failed to load workspace data:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    if (user && workspaceId) {
-      loadWorkspaceData();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user, workspaceId]);
-
   const handleCreateBoard = async (e: React.BaseSyntheticEvent) => {
     e.preventDefault();
-    if (!newBoardName.trim() || creating) return;
-    setCreating(true);
+    if (!newBoardName.trim() || createBoardMutation.isPending) return;
 
     try {
-      await apiClient.createBoard(workspaceId, newBoardName, newBoardDescription);
+      await createBoardMutation.mutateAsync({ workspaceId, name: newBoardName, description: newBoardDescription });
       setNewBoardName('');
       setNewBoardDescription('');
       setShowCreateModal(false);
-      loadWorkspaceData();
     } catch (error) {
       console.error('Failed to create board:', error);
-    } finally {
-      setCreating(false);
     }
   };
 
   const handleRenameBoard = async () => {
     if (!renamingBoard || !renameValue.trim()) return;
     try {
-      await apiClient.updateBoard(renamingBoard.id, { name: renameValue });
+      await updateBoardMutation.mutateAsync({ id: renamingBoard.id, workspaceId, name: renameValue });
       setRenamingBoard(null);
-      loadWorkspaceData();
     } catch (error) {
       console.error('Failed to rename board:', error);
     }
@@ -161,9 +140,8 @@ export default function WorkspacePage() {
   const handleDeleteBoard = async () => {
     if (!deletingBoard) return;
     try {
-      await apiClient.deleteBoard(deletingBoard.id);
+      await deleteBoardMutation.mutateAsync({ id: deletingBoard.id, workspaceId });
       setDeletingBoard(null);
-      loadWorkspaceData();
     } catch (error) {
       console.error('Failed to delete board:', error);
     }
@@ -308,7 +286,7 @@ export default function WorkspacePage() {
               >
                 Cancel
               </Button>
-              <Button type="submit" disabled={creating}>Create</Button>
+              <Button type="submit" disabled={createBoardMutation.isPending}>Create</Button>
             </DialogFooter>
           </form>
         </DialogContent>
