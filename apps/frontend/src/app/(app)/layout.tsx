@@ -11,6 +11,7 @@ import { WorkspaceProvider } from '@/contexts/workspace-context';
 import { PresenceIndicator } from '@/components/presence-indicator';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { usePagePresence } from '@/hooks/use-page-presence';
+import { RealTimeClock } from '@/components/realtime-clock';
 
 // Wrapper component to use hooks inside SocketProvider
 function PagePresenceTracker() {
@@ -49,6 +50,7 @@ export default function AppLayout({ children }: Readonly<{ children: React.React
               <header className="flex h-12 shrink-0 items-center gap-2 border-b px-4">
                 <SidebarTrigger className="-ml-1" />
                 <Separator orientation="vertical" className="mr-2 h-4" />
+                <RealTimeClock />
                 <div className="ml-auto">
                   <PresenceIndicator />
                 </div>
