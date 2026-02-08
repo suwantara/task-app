@@ -109,6 +109,8 @@ export function useNoteRealtime(
     onNoteCreated?: (note: Note) => void;
     onNoteUpdated?: (note: Note) => void;
     onNoteDeleted?: (data: { id: string }) => void;
+    onNoteTyping?: (data: { noteId: string; userId: string; name: string }) => void;
+    onNoteStopTyping?: (data: { noteId: string; userId: string }) => void;
   },
 ) {
   const { socket, joinRoom, leaveRoom } = useSocket();
@@ -146,10 +148,52 @@ export function useNoteRealtime(
       handlers.push(['note:deleted', h]);
     }
 
+    if (callbacks.onNoteTyping) {
+      const h = callbacks.onNoteTyping;
+      socket.on('note:typing', h);
+      handlers.push(['note:typing', h]);
+    }
+
+    if (callbacks.onNoteStopTyping) {
+      const h = callbacks.onNoteStopTyping;
+      socket.on('note:stop-typing', h);
+      handlers.push(['note:stop-typing', h]);
+    }
+
     return () => {
       for (const [event, handler] of handlers) {
         socket.off(event, handler);
       }
     };
   }, [socket, callbacks]);
+
+  // Emit typing status (only status, no content — content stays local until autosave)
+  const emitTyping = useCallback(
+    (noteId: string, userId: string, name: string) => {
+      if (socket && workspaceId) {
+        socket.emit('note:typing', {
+          room: `workspace:${workspaceId}`,
+          noteId,
+          userId,
+          name,
+        });
+      }
+    },
+    [socket, workspaceId],
+  );
+
+  const emitStopTyping = useCallback(
+    (noteId: string, userId: string) => {
+      if (socket && workspaceId) {
+        socket.emit('note:stop-typing', {
+          room: `workspace:${workspaceId}`,
+          noteId,
+          userId,
+        });
+      }
+    },
+    [socket, workspaceId],
+  );
+
+  return { emitTyping, emitStopTyping };
 }

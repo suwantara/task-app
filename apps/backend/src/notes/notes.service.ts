@@ -21,6 +21,7 @@ export class NotesService {
   private readonly getCacheKey = {
     notesList: (workspaceId: string) => `notes:workspace:${workspaceId}`,
     note: (id: string) => `note:${id}`,
+    docBuffer: (id: string) => `doc_buffer:${id}`,
   } as const;
 
   async create(userId: string, createNoteDto: CreateNoteDto) {
@@ -84,22 +85,10 @@ export class NotesService {
   async update(id: string, userId: string, updateNoteDto: UpdateNoteDto) {
     const { workspaceId } = await this.permissions.validateNoteAccess(userId, id);
 
-    // Fetch current state for optimistic update
-    const note = await this.prisma.note.findUnique({
-      where: { id },
-      include: {
-        creator: { select: { id: true, name: true, avatarUrl: true } },
-      },
-    });
+    // Step 1: Write to Redis buffer for crash safety
+    await this.cache.set(this.getCacheKey.docBuffer(id), updateNoteDto, 300);
 
-    if (!note) throw new NotFoundException('Note not found');
-
-    // Optimistic update
-    const optimisticNote = { ...note, ...updateNoteDto, updatedAt: new Date() };
-    await this.cache.set(this.getCacheKey.note(id), optimisticNote);
-    this.realtime.emitNoteUpdated(workspaceId, optimisticNote);
-
-    // Persist
+    // Step 2: Persist to PostgreSQL via Prisma (source of truth)
     const updated = await this.prisma.note.update({
       where: { id },
       data: updateNoteDto,
@@ -108,9 +97,15 @@ export class NotesService {
       },
     });
 
-    // Authoritative cache
-    await this.cache.set(this.getCacheKey.note(id), updated);
-    await this.cache.del(this.getCacheKey.notesList(workspaceId));
+    // Step 3: Update authoritative cache & clear buffer
+    await Promise.all([
+      this.cache.set(this.getCacheKey.note(id), updated),
+      this.cache.del(this.getCacheKey.notesList(workspaceId)),
+      this.cache.del(this.getCacheKey.docBuffer(id)),
+    ]);
+
+    // Step 4: Broadcast to other users ONLY after successful DB persist
+    this.realtime.emitNoteUpdated(workspaceId, updated);
 
     return updated;
   }

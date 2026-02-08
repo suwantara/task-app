@@ -29,7 +29,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { SimpleEditor } from '@/components/tiptap-templates/simple/simple-editor';
-import { Plus, FileText, Clock, Search, Pencil, Trash2, MoreHorizontal, Check, Loader2 } from 'lucide-react';
+import { Plus, FileText, Clock, Search, Pencil, Trash2, MoreHorizontal, Check, Loader2, PenLine } from 'lucide-react';
 
 export default function NotesPage() {
   const { user, loading: authLoading } = useAuthGuard();
@@ -54,8 +54,12 @@ export default function NotesPage() {
   const [noteToModify, setNoteToModify] = useState<Note | null>(null);
   const [renameTitle, setRenameTitle] = useState('');
 
+  // Typing indicator from other users
+  const [typingUsers, setTypingUsers] = useState<Map<string, string>>(new Map());
+  const typingTimers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
+
   // Autosave state
-  const AUTOSAVE_INTERVAL = 1000; // 1 second
+  const AUTOSAVE_INTERVAL = 2000; // 2 seconds
   const [saveStatus, setSaveStatus] = useState<'idle' | 'unsaved' | 'saving' | 'saved'>('idle');
   const autoSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const hasPendingChanges = useRef(false);
@@ -64,8 +68,17 @@ export default function NotesPage() {
   const isLocalEdit = useRef(false);
   const selectedNoteRef = useRef<string | null>(null);
 
+  // Refs to always have the latest editing values (avoids stale closures in timers)
+  const editingContentRef = useRef(editingContent);
+  editingContentRef.current = editingContent;
+  const editingTitleRef = useRef(editingTitle);
+  editingTitleRef.current = editingTitle;
+
+  // Ref for emitStopTyping to avoid stale closure in handleSaveNote
+  const emitStopTypingRef = useRef<(noteId: string, userId: string) => void>(() => {});
+
   // Realtime hook — update React Query cache on remote changes
-  useNoteRealtime(
+  const { emitTyping, emitStopTyping } = useNoteRealtime(
     activeWorkspace?.id || null,
     {
       onNoteCreated: useCallback((note: unknown) => {
@@ -111,8 +124,47 @@ export default function NotesPage() {
         }
       // eslint-disable-next-line react-hooks/exhaustive-deps
       }, [workspaceId]),
+
+      // Typing indicator: someone else is typing on a note
+      onNoteTyping: useCallback((data: { noteId: string; userId: string; name: string }) => {
+        setTypingUsers((prev) => {
+          const next = new Map(prev);
+          next.set(data.userId, data.name);
+          return next;
+        });
+        // Auto-clear after 3s if no new typing event
+        const existing = typingTimers.current.get(data.userId);
+        if (existing) clearTimeout(existing);
+        typingTimers.current.set(
+          data.userId,
+          setTimeout(() => {
+            setTypingUsers((prev) => {
+              const next = new Map(prev);
+              next.delete(data.userId);
+              return next;
+            });
+            typingTimers.current.delete(data.userId);
+          }, 3000),
+        );
+      }, []),
+
+      onNoteStopTyping: useCallback((data: { noteId: string; userId: string }) => {
+        setTypingUsers((prev) => {
+          const next = new Map(prev);
+          next.delete(data.userId);
+          return next;
+        });
+        const timer = typingTimers.current.get(data.userId);
+        if (timer) {
+          clearTimeout(timer);
+          typingTimers.current.delete(data.userId);
+        }
+      }, []),
     },
   );
+
+  // Keep emitStopTyping ref in sync
+  emitStopTypingRef.current = emitStopTyping;
 
   // Clear selected note when workspace changes
   useEffect(() => {
@@ -125,8 +177,10 @@ export default function NotesPage() {
 
   // Cleanup
   useEffect(() => {
+    const timers = typingTimers.current;
     return () => {
       if (autoSaveTimer.current) clearTimeout(autoSaveTimer.current);
+      for (const timer of timers.values()) clearTimeout(timer);
     };
   }, []);
 
@@ -156,21 +210,26 @@ export default function NotesPage() {
     }
   };
 
-  // Save note using React Query mutation
+  // Save note using React Query mutation (reads latest values from refs to avoid stale closures)
   const handleSaveNote = useCallback(async () => {
     if (!selectedNoteRef.current || !workspaceId) return;
+    const noteId = selectedNoteRef.current;
     setSaveStatus('saving');
     isLocalEdit.current = false;
     hasPendingChanges.current = false;
 
     try {
       await updateNoteMutation.mutateAsync({
-        id: selectedNoteRef.current,
+        id: noteId,
         workspaceId,
-        title: editingTitle,
-        content: editingContent,
+        title: editingTitleRef.current,
+        content: editingContentRef.current,
       });
       setSaveStatus('saved');
+      // Notify others that typing stopped (content is now persisted & broadcast via server)
+      if (user) {
+        emitStopTypingRef.current(noteId, user.id);
+      }
       // Reset to idle after 2s
       setTimeout(() => setSaveStatus((s) => s === 'saved' ? 'idle' : s), 2000);
     } catch (error) {
@@ -178,7 +237,7 @@ export default function NotesPage() {
       setSaveStatus('unsaved');
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [editingTitle, editingContent, workspaceId]);
+  }, [workspaceId, user]);
 
   // Schedule autosave with configurable interval
   const scheduleAutosave = useCallback(() => {
@@ -194,17 +253,27 @@ export default function NotesPage() {
   const handleContentChange = (content: string) => {
     setEditingContent(content);
     isLocalEdit.current = true;
+    // Emit typing status (no content) so other users see a typing indicator
+    if (selectedNoteRef.current && user) {
+      emitTyping(selectedNoteRef.current, user.id, user.name);
+    }
     scheduleAutosave();
   };
 
   const handleTitleChange = (title: string) => {
     setEditingTitle(title);
     isLocalEdit.current = true;
+    if (selectedNoteRef.current && user) {
+      emitTyping(selectedNoteRef.current, user.id, user.name);
+    }
     scheduleAutosave();
   };
 
   const handleSelectNote = async (note: Note) => {
-    // Stop editing signal for previous note
+    // Stop typing indicator for previous note
+    if (selectedNoteRef.current && user) {
+      emitStopTyping(selectedNoteRef.current, user.id);
+    }
     isLocalEdit.current = false;
 
     // Flush pending save for current note before switching
@@ -216,8 +285,8 @@ export default function NotesPage() {
       await updateNoteMutation.mutateAsync({
         id: selectedNote.id,
         workspaceId,
-        title: editingTitle,
-        content: editingContent,
+        title: editingTitleRef.current,
+        content: editingContentRef.current,
       }).catch(() => {});
       hasPendingChanges.current = false;
     }
@@ -432,6 +501,12 @@ export default function NotesPage() {
                   <span className="flex items-center gap-1.5 text-xs text-amber-500">
                     <Loader2 className="size-3.5 animate-spin" />
                     Editing
+                  </span>
+                )}
+                {typingUsers.size > 0 && (
+                  <span className="flex items-center gap-1.5 text-xs text-blue-500">
+                    <PenLine className="size-3.5" />
+                    {[...typingUsers.values()].join(', ')} typing…
                   </span>
                 )}
               </div>

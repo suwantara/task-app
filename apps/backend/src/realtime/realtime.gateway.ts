@@ -176,46 +176,27 @@ export class RealtimeGateway
     });
   }
 
-  @SubscribeMessage('note:editing')
-  handleNoteEditing(
+  @SubscribeMessage('note:typing')
+  handleNoteTyping(
     @MessageBody()
     data: { room: string; noteId: string; userId: string; name: string },
     @ConnectedSocket() client: Socket,
   ) {
-    client.to(data.room).emit('note:someone-editing', {
+    // Broadcast typing status only (no content) to other users in the room
+    client.to(data.room).emit('note:typing', {
       noteId: data.noteId,
       userId: data.userId,
       name: data.name,
     });
   }
 
-  @SubscribeMessage('note:content-update')
-  handleNoteContentUpdate(
-    @MessageBody()
-    data: {
-      room: string;
-      noteId: string;
-      title: string;
-      content: string;
-      userId: string;
-    },
-    @ConnectedSocket() client: Socket,
-  ) {
-    client.to(data.room).emit('note:content-changed', {
-      noteId: data.noteId,
-      title: data.title,
-      content: data.content,
-      userId: data.userId,
-    });
-  }
-
-  @SubscribeMessage('note:stop-editing')
-  handleNoteStopEditing(
+  @SubscribeMessage('note:stop-typing')
+  handleNoteStopTyping(
     @MessageBody()
     data: { room: string; noteId: string; userId: string },
     @ConnectedSocket() client: Socket,
   ) {
-    client.to(data.room).emit('note:someone-stopped-editing', {
+    client.to(data.room).emit('note:stop-typing', {
       noteId: data.noteId,
       userId: data.userId,
     });
