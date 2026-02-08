@@ -29,7 +29,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { SimpleEditor } from '@/components/tiptap-templates/simple/simple-editor';
-import { Plus, Save, FileText, Clock, Search, Pencil, Trash2, MoreHorizontal, Check } from 'lucide-react';
+import { Plus, FileText, Clock, Search, Pencil, Trash2, MoreHorizontal, Check, Loader2 } from 'lucide-react';
 
 export default function NotesPage() {
   const { user, loading: authLoading } = useAuthGuard();
@@ -55,7 +55,7 @@ export default function NotesPage() {
   const [renameTitle, setRenameTitle] = useState('');
 
   // Autosave state
-  const AUTOSAVE_INTERVAL = 3000; // 3 seconds
+  const AUTOSAVE_INTERVAL = 1000; // 1 second
   const [saveStatus, setSaveStatus] = useState<'idle' | 'unsaved' | 'saving' | 'saved'>('idle');
   const autoSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const hasPendingChanges = useRef(false);
@@ -417,21 +417,23 @@ export default function NotesPage() {
               />
               <div className="flex items-center gap-2 shrink-0 ml-4">
                 {saveStatus === 'saving' && (
-                  <span className="text-xs text-muted-foreground animate-pulse">Saving...</span>
+                  <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                    <Loader2 className="size-3.5 animate-spin" />
+                    Saving
+                  </span>
                 )}
                 {saveStatus === 'saved' && (
                   <span className="flex items-center gap-1 text-xs text-green-600">
-                    <Check className="size-3" />
+                    <Check className="size-3.5" />
                     Saved
                   </span>
                 )}
                 {saveStatus === 'unsaved' && (
-                  <span className="text-xs text-amber-500">Unsaved</span>
+                  <span className="flex items-center gap-1.5 text-xs text-amber-500">
+                    <Loader2 className="size-3.5 animate-spin" />
+                    Editing
+                  </span>
                 )}
-                <Button size="sm" variant="outline" onClick={handleSaveNote} disabled={saveStatus === 'saving'}>
-                  <Save className="mr-1.5 size-3.5" />
-                  Save
-                </Button>
               </div>
             </div>
 
