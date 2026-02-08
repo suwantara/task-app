@@ -10,6 +10,7 @@ import {
 } from '@nestjs/websockets';
 import { Logger } from '@nestjs/common';
 import { Server, Socket } from 'socket.io';
+import { JwtService } from '@nestjs/jwt';
 import * as Y from 'yjs';
 import { CacheService } from '../cache/cache.service';
 
@@ -38,7 +39,10 @@ export class RealtimeGateway
   // In-memory Yjs room tracking (per-instance, for cleanup only)
   private readonly yjsRooms = new Map<string, Set<string>>();
 
-  constructor(private readonly cache: CacheService) {}
+  constructor(
+    private readonly cache: CacheService,
+    private readonly jwtService: JwtService,
+  ) {}
 
   /**
    * After the WebSocket server is initialized, subscribe to Redis pub/sub
@@ -59,11 +63,39 @@ export class RealtimeGateway
       this.server.to(channel).emit(msg.event, msg.data);
     });
 
+    // Subscribe to session force-logout events
+    await this.cache.psubscribe('session:force-logout', (_channel, message) => {
+      const msg = message as { userId: string; oldSessionId?: string };
+      if (msg.userId) {
+        this.server.to(`user:${msg.userId}`).emit('session:force-logout', {
+          oldSessionId: msg.oldSessionId,
+        });
+      }
+    });
+
     this.logger.log('Redis pub/sub subscriptions active');
   }
 
   handleConnection(client: Socket) {
     this.logger.debug(`Client connected: ${client.id}`);
+
+    // Verify JWT and join user-specific room for targeted events (e.g. force-logout)
+    const token = client.handshake?.auth?.token as string | undefined;
+    if (token) {
+      try {
+        const payload = this.jwtService.verify<{ sub: string }>(token);
+        if (payload.sub) {
+          void client.join(`user:${payload.sub}`);
+        }
+      } catch {
+        // Invalid/expired token — disconnect the socket
+        this.logger.warn(`Client ${client.id} sent invalid JWT, disconnecting`);
+        client.disconnect(true);
+      }
+    } else {
+      // No token — reject connection
+      client.disconnect(true);
+    }
   }
 
   async handleDisconnect(client: Socket) {

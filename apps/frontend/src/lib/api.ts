@@ -4,6 +4,7 @@ const API_BASE_URL = (process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:3000'
 class ApiClient {
   private readonly baseUrl: string;
   private token: string | null = null;
+  private isRedirecting = false;
 
   constructor(baseUrl: string) {
     this.baseUrl = baseUrl;
@@ -46,6 +47,22 @@ class ApiClient {
     });
 
     if (!response.ok) {
+      // Auto-logout on 401 — session expired or replaced by another device
+      // Skip redirect for auth endpoints and prevent redirect loops
+      if (
+        response.status === 401 &&
+        typeof globalThis.window !== 'undefined' &&
+        !this.isRedirecting &&
+        !endpoint.startsWith('/auth/login') &&
+        !endpoint.startsWith('/auth/register')
+      ) {
+        this.isRedirecting = true;
+        this.setToken(null);
+        window.location.href = '/login';
+        // Throw immediately to prevent further processing
+        throw new Error('Session expired');
+      }
+
       const error = await response.json().catch(() => ({
         message: response.statusText,
       }));
@@ -75,6 +92,16 @@ class ApiClient {
 
   async getProfile() {
     return this.request<User>('/auth/profile');
+  }
+
+  async logout() {
+    try {
+      await this.request<void>('/auth/logout', { method: 'POST' });
+    } catch {
+      // Ignore errors — we clear the token regardless
+    } finally {
+      this.setToken(null);
+    }
   }
 
   // Workspace endpoints

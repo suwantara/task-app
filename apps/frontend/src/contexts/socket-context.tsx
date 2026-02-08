@@ -71,6 +71,31 @@ export function SocketProvider({ children }: Readonly<{ children: React.ReactNod
       setOnlineUsers(data.users);
     });
 
+    // Single-session enforcement: force-logout when another device logs in
+    // Parse current session ID from JWT to compare with the invalidated one
+    newSocket.on('session:force-logout', (data?: { oldSessionId?: string }) => {
+      const currentToken = apiClient.getToken();
+      if (!currentToken) return;
+
+      // Decode JWT payload to get current sid
+      try {
+        const parts = currentToken.split('.');
+        if (parts.length === 3) {
+          const payload = JSON.parse(atob(parts[1])) as { sid?: string };
+          // Only logout if the invalidated session matches our current session
+          // or if no oldSessionId provided (broadcast to all)
+          if (!data?.oldSessionId || payload.sid === data.oldSessionId) {
+            apiClient.setToken(null);
+            window.location.href = '/login';
+          }
+        }
+      } catch {
+        // If we can't decode, force logout to be safe
+        apiClient.setToken(null);
+        window.location.href = '/login';
+      }
+    });
+
     socketRef.current = newSocket;
     setSocketVersion((v) => v + 1);
 

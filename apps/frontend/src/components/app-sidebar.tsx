@@ -399,7 +399,7 @@ export function AppSidebar() {
             </SidebarGroupLabel>
             <SidebarGroupContent>
               <div className="px-2 py-1">
-                <WorkspaceMembers members={activeWorkspace.members} maxVisible={6} />
+                <WorkspaceMembers members={activeWorkspace.members} maxVisible={5} />
               </div>
             </SidebarGroupContent>
           </SidebarGroup>

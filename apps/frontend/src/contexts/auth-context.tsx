@@ -57,10 +57,10 @@ export function AuthProvider({ children }: Readonly<{ children: React.ReactNode 
     setUser(response.user);
   };
 
-  const logout = () => {
-    apiClient.setToken(null);
+  const logout = useCallback(async () => {
+    await apiClient.logout();
     setUser(null);
-  };
+  }, []);
 
   const refreshUser = useCallback(async () => {
     try {

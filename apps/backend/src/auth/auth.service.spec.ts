@@ -2,6 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { AuthService } from './auth.service';
 import { UsersService } from '../users/users.service';
 import { JwtService } from '@nestjs/jwt';
+import { CacheService } from '../cache/cache.service';
 import * as bcrypt from 'bcrypt';
 
 jest.mock('bcrypt');
@@ -27,6 +28,15 @@ describe('AuthService', () => {
           provide: JwtService,
           useValue: {
             sign: jest.fn(),
+          },
+        },
+        {
+          provide: CacheService,
+          useValue: {
+            get: jest.fn(),
+            set: jest.fn(),
+            del: jest.fn(),
+            publish: jest.fn(),
           },
         },
       ],
@@ -88,7 +98,7 @@ describe('AuthService', () => {
   });
 
   describe('login', () => {
-    it('should return access token', async () => {
+    it('should return access token and store session in Redis', async () => {
       const user = { id: '1', email: 'test@test.com', name: 'Test' };
       jest.spyOn(jwtService, 'sign').mockReturnValue('token');
 
@@ -98,7 +108,9 @@ describe('AuthService', () => {
           access_token: 'token',
           user: user
       });
-      expect(jwtService.sign).toHaveBeenCalledWith({ email: user.email, sub: user.id });
+      expect(jwtService.sign).toHaveBeenCalledWith(
+        expect.objectContaining({ email: user.email, sub: user.id, sid: expect.any(String) }),
+      );
     });
   });
 });

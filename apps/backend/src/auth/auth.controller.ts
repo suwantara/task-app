@@ -5,6 +5,8 @@ import {
   UseGuards,
   Body,
   Get,
+  HttpCode,
+  HttpStatus,
 } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { AuthService, SafeUser } from './auth.service';
@@ -17,13 +19,20 @@ export class AuthController {
 
   @UseGuards(AuthGuard('local'))
   @Post('login')
-  async login(@Request() req: { user: SafeUser }, @Body() loginDto: LoginDto) {
+  async login(@Request() req: { user: SafeUser }, @Body() _loginDto: LoginDto) {
     return this.authService.login(req.user);
   }
 
   @Post('register')
   async register(@Body() registerDto: RegisterDto) {
     return this.authService.registerAndLogin(registerDto);
+  }
+
+  @UseGuards(AuthGuard('jwt'))
+  @Post('logout')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  async logout(@Request() req: { user: { userId: string; email: string } }) {
+    await this.authService.logout(req.user.userId);
   }
 
   @UseGuards(AuthGuard('jwt'))

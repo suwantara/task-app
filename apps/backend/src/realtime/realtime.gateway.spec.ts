@@ -1,6 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { RealtimeGateway } from './realtime.gateway';
 import { CacheService } from '../cache/cache.service';
+import { JwtService } from '@nestjs/jwt';
 
 describe('RealtimeGateway', () => {
   let gateway: RealtimeGateway;
@@ -27,6 +28,13 @@ describe('RealtimeGateway', () => {
             smembers: jest.fn().mockResolvedValue([]),
             setBuffer: jest.fn().mockResolvedValue(undefined),
             getBuffer: jest.fn().mockResolvedValue(null),
+          },
+        },
+        {
+          provide: JwtService,
+          useValue: {
+            verify: jest.fn().mockReturnValue({ sub: 'user-1', email: 'test@test.com', sid: 'session-1' }),
+            sign: jest.fn().mockReturnValue('mock-token'),
           },
         },
       ],

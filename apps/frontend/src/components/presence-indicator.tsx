@@ -43,16 +43,16 @@ export function PresenceIndicator() {
         <Tooltip>
           <TooltipTrigger asChild>
             <div className="flex -space-x-2">
-              {onlineUsers.slice(0, 5).map((u) => (
+              {onlineUsers.slice(0, 3).map((u) => (
                 <Avatar key={u.userId} className="h-6 w-6 border-2 border-background">
                   <AvatarFallback className="text-[10px]">
                     {(u.name ?? '?').charAt(0).toUpperCase()}
                   </AvatarFallback>
                 </Avatar>
               ))}
-              {onlineUsers.length > 5 && (
+              {onlineUsers.length > 3 && (
                 <div className="flex h-6 w-6 items-center justify-center rounded-full border-2 border-background bg-muted text-[10px] font-medium">
-                  +{onlineUsers.length - 5}
+                  +{onlineUsers.length - 3}
                 </div>
               )}
             </div>
