@@ -148,8 +148,13 @@ export default function BoardPage() {
     setNewColumnName('');
     setAddingColumn(false);
     try {
-      await apiClient.createColumn(boardId, name, columns.length);
-      invalidateBoard();
+      const created = await apiClient.createColumn(boardId, name, columns.length);
+      // Optimistic: add to cache immediately
+      qc.setQueryData(queryKeys.columns(boardId), (old: Column[] | undefined) => {
+        if (!old) return [created];
+        if (old.some((c) => c.id === created.id)) return old;
+        return [...old, created].toSorted((a, b) => a.position - b.position);
+      });
     } catch (error) {
       console.error('Failed to create column:', error);
     }
@@ -163,14 +168,19 @@ export default function BoardPage() {
     setAddingCardColumnId(null);
     const columnTasks = tasks.filter((t: Task) => t.columnId === columnId);
     try {
-      await apiClient.createTask({
+      const created = await apiClient.createTask({
         workspaceId: (board as Board).workspaceId,
         boardId,
         columnId,
         title,
         position: columnTasks.length,
       });
-      invalidateBoard();
+      // Optimistic: add to cache immediately (realtime will handle other browsers)
+      qc.setQueryData(queryKeys.tasks(boardId), (old: Task[] | undefined) => {
+        if (!old) return [created];
+        if (old.some((t) => t.id === created.id)) return old;
+        return [...old, created];
+      });
     } catch (error) {
       console.error('Failed to create task:', error);
     }
@@ -186,13 +196,16 @@ export default function BoardPage() {
   const handleSaveTask = async () => {
     if (!editingTask) return;
     try {
-      await apiClient.updateTask(editingTask.id, {
+      const updated = await apiClient.updateTask(editingTask.id, {
         title: editTitle,
         description: editDescription,
         priority: editPriority,
       });
+      // Optimistic: update in cache immediately
+      qc.setQueryData(queryKeys.tasks(boardId), (old: Task[] | undefined) =>
+        old ? old.map((t) => (t.id === updated.id ? updated : t)) : old,
+      );
       setEditingTask(null);
-      invalidateBoard();
     } catch (error) {
       console.error('Failed to update task:', error);
     }
@@ -201,7 +214,11 @@ export default function BoardPage() {
   const handleDeleteTask = async (taskId: string) => {
     try {
       await apiClient.deleteTask(taskId);
-      invalidateBoard();
+      // Optimistic: remove from cache immediately
+      qc.setQueryData(queryKeys.tasks(boardId), (old: Task[] | undefined) =>
+        old ? old.filter((t) => t.id !== taskId) : old,
+      );
+      if (editingTask?.id === taskId) setEditingTask(null);
     } catch (error) {
       console.error('Failed to delete task:', error);
     }
