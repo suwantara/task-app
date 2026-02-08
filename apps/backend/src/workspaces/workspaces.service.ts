@@ -16,6 +16,32 @@ import { randomBytes } from 'node:crypto';
 
 @Injectable()
 export class WorkspacesService {
+  /**
+   * Generate a short, URL-friendly unique invite token (8 chars).
+   * Uses base64url encoding for compact, safe output.
+   * Retries on the (extremely rare) collision.
+   */
+  private async generateShortToken(): Promise<string> {
+    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+    const maxAttempts = 5;
+
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      const bytes = randomBytes(8);
+      let token = '';
+      for (let i = 0; i < 8; i++) {
+        token += chars[bytes[i] % chars.length];
+      }
+
+      const existing = await this.prisma.workspaceInviteLink.findUnique({
+        where: { token },
+      });
+      if (!existing) return token;
+    }
+
+    // Fallback: longer token to guarantee uniqueness
+    return randomBytes(12).toString('base64url').slice(0, 12);
+  }
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly cache: CacheService,
@@ -202,7 +228,7 @@ export class WorkspacesService {
   ) {
     await this.assertOwnerOrEditor(workspaceId, userId);
 
-    const token = randomBytes(32).toString('hex');
+    const token = await this.generateShortToken();
 
     return this.prisma.workspaceInviteLink.create({
       data: {
