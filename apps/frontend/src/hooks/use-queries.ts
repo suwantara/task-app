@@ -229,14 +229,10 @@ export function useCreateNote() {
 }
 
 export function useUpdateNote() {
-  const qc = useQueryClient();
   return useMutation({
     mutationFn: (data: { id: string; workspaceId: string; title?: string; content?: string }) =>
       apiClient.updateNote(data.id, { title: data.title, content: data.content }),
-    onSuccess: (_result, variables) => {
-      qc.invalidateQueries({ queryKey: queryKeys.notes(variables.workspaceId) });
-      qc.invalidateQueries({ queryKey: queryKeys.note(variables.id) });
-    },
+    // No invalidateQueries — realtime broadcast handles cache updates for all clients
   });
 }
 
