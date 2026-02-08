@@ -1,4 +1,5 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
+import { Task } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { CacheService } from '../cache/cache.service';
 import { PermissionsService } from '../common/permissions.service';
@@ -112,14 +113,54 @@ export class TasksService {
   async update(id: string, userId: string, updateTaskDto: UpdateTaskDto) {
     await this.permissions.validateTaskAccess(userId, id);
 
+    // 1. Fetch current task to get boardId if not in cache (needed for keys)
+    // We try cache first for speed
+    const cacheKey = this.getCacheKey.task(id);
+    let task = await this.cache.get<Task>(cacheKey);
+
+    task ??= await this.prisma.task.findUnique({
+      where: { id },
+      include: {
+        assignee: { select: { id: true, name: true, avatarUrl: true } },
+        labels: true,
+      },
+    });
+
+    if (!task) throw new NotFoundException('Task not found');
+    const boardId = task.boardId;
+
+    // 2. Prepare update data
     const { dueDate, ...rest } = updateTaskDto;
     const updateData: Record<string, unknown> = { ...rest };
-
     if (dueDate) {
       updateData['dueDate'] = new Date(dueDate as string | number | Date);
     }
 
-    const task = await this.prisma.task.update({
+    // 3. Optimistic Update to Redis
+    const updatedTaskOptimistic = {
+      ...task,
+      ...updateData,
+      updatedAt: new Date(),
+    };
+
+    // Update individual task cache
+    await this.cache.set(cacheKey, updatedTaskOptimistic, 120);
+
+    // Update list cache (find and replace in array)
+    const listCacheKey = this.getCacheKey.tasksList(boardId);
+    const cachedList = await this.cache.get<Task[]>(listCacheKey);
+    if (cachedList) {
+      const updatedList = cachedList.map((t) =>
+        t.id === id ? { ...t, ...updatedTaskOptimistic } : t,
+      );
+      await this.cache.set(listCacheKey, updatedList);
+    }
+
+    // 4. Broadcast immediately
+    this.realtime.emitTaskUpdated(boardId, updatedTaskOptimistic);
+
+    // 5. Persist to Database
+    const finalTask = await this.prisma.task.update({
       where: { id },
       data: updateData,
       include: {
@@ -128,15 +169,21 @@ export class TasksService {
       },
     });
 
-    // Invalidate caches
-    await Promise.all([
-      this.cache.del(this.getCacheKey.task(id)),
-      this.cache.del(this.getCacheKey.tasksList(task.boardId)),
-      this.cache.del(`board:${task.boardId}`),
-    ]);
+    // 6. Update Redis again with authoritative DB data (eventual consistency)
+    await this.cache.set(cacheKey, finalTask, 120);
 
-    this.realtime.emitTaskUpdated(task.boardId, task);
-    return task;
+    // We can choose to invalidate list or update it again.
+    // Updating provides better continuity.
+    if (cachedList) {
+      const finalList = cachedList.map((t) => (t.id === id ? finalTask : t));
+      await this.cache.set(listCacheKey, finalList);
+    } else {
+      // If list wasn't cached, good opportunity to invalidate just in case
+      await this.cache.del(listCacheKey);
+    }
+    await this.cache.del(`board:${boardId}`); // Invalidate board cache conservatively
+
+    return finalTask;
   }
 
   async remove(id: string, userId: string) {

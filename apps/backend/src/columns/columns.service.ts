@@ -4,12 +4,18 @@ import {
   ForbiddenException,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { CacheService } from '../cache/cache.service';
+import { RealtimeService } from '../realtime/realtime.service';
 import { CreateColumnDto } from './dto/create-column.dto';
 import { UpdateColumnDto } from './dto/update-column.dto';
 
 @Injectable()
 export class ColumnsService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly cache: CacheService,
+    private readonly realtime: RealtimeService,
+  ) {}
 
   async create(userId: string, createColumnDto: CreateColumnDto) {
     // Verify board access
@@ -102,10 +108,28 @@ export class ColumnsService {
     );
     if (!isMember) throw new ForbiddenException('Access denied');
 
-    return this.prisma.column.update({
+    const boardId = column.boardId;
+
+    // Optimistic Update (For broadcast)
+    const updatedColumnOptimistic = {
+      ...column,
+      ...updateColumnDto,
+      updatedAt: new Date(), // Ensure we send a valid date object or string depending on what frontend expects, Date is fine for socket.io usually
+    };
+
+    // Broadcast immediately
+    this.realtime.emitColumnUpdated(boardId, updatedColumnOptimistic);
+
+    // Persist to Database
+    const updated = await this.prisma.column.update({
       where: { id },
       data: updateColumnDto,
     });
+
+    // Invalidate Board Cache
+    await this.cache.del(`board:${boardId}`);
+
+    return updated;
   }
 
   async remove(id: string, userId: string) {

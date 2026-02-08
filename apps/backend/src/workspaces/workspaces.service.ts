@@ -383,12 +383,38 @@ export class WorkspacesService {
 
     const member = await this.prisma.workspaceMember.findUnique({
       where: { id: memberId },
+      include: {
+        user: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            avatarUrl: true,
+          },
+        },
+      },
     });
     if (!member) throw new NotFoundException('Member not found');
     if (member.role === 'OWNER') {
       throw new ForbiddenException('Cannot change the owner role');
     }
 
+    // 1. Optimistic Update to Redis
+    const cacheKey = this.getCacheKey.members(workspaceId);
+    const cachedMembers = (await this.cache.get(cacheKey)) as {
+      id: string;
+      role: string;
+      [key: string]: unknown;
+    }[] | null;
+
+    if (cachedMembers) {
+      const updatedMembers = cachedMembers.map((m) =>
+        m.id === memberId ? { ...m, role: dto.role } : m,
+      );
+      await this.cache.set(cacheKey, updatedMembers);
+    }
+
+    // 2. Persist to Database
     const updated = await this.prisma.workspaceMember.update({
       where: { id: memberId },
       data: { role: dto.role },
@@ -404,8 +430,15 @@ export class WorkspacesService {
       },
     });
 
-    // Invalidate members cache
-    await this.cache.del(this.getCacheKey.members(workspaceId));
+    // 3. Update cache with authoritative data
+    if (cachedMembers) {
+      const finalMembers = cachedMembers.map((m) =>
+        m.id === memberId ? updated : m,
+      );
+      await this.cache.set(cacheKey, finalMembers);
+    } else {
+      await this.cache.del(cacheKey);
+    }
 
     return updated;
   }

@@ -7,16 +7,19 @@ import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+} from '@/components/ui/dropdown-menu';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
-import { Copy, RefreshCw, Trash2, Users, Shield, Eye, Pencil } from 'lucide-react';
+import { Copy, RefreshCw, Trash2, Users, Shield, Eye, Pencil, MoreHorizontal } from 'lucide-react';
 
 interface Member {
   id: string;
@@ -300,30 +303,37 @@ export default function WorkspaceMembersPage() {
                   {member.role === 'OWNER' ? (
                     getRoleBadge(member.role)
                   ) : isOwner ? (
-                    <>
-                      <Select
-                        value={member.role}
-                        onValueChange={(value) =>
-                          updateRoleMutation.mutate({ memberId: member.id, role: value })
-                        }
-                      >
-                        <SelectTrigger className="w-32">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="EDITOR">Editor</SelectItem>
-                          <SelectItem value="VIEWER">Viewer</SelectItem>
-                        </SelectContent>
-                      </Select>
-                      <Button
-                        size="icon"
-                        variant="ghost"
-                        className="text-destructive"
-                        onClick={() => removeMemberMutation.mutate(member.id)}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </>
+                    <div className="flex items-center gap-2">
+                      {getRoleBadge(member.role)}
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="ghost" size="icon" className="h-8 w-8">
+                            <MoreHorizontal className="h-4 w-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuLabel>Manage Access</DropdownMenuLabel>
+                          <DropdownMenuSeparator />
+                          <DropdownMenuRadioGroup
+                            value={member.role}
+                            onValueChange={(value) =>
+                              updateRoleMutation.mutate({ memberId: member.id, role: value })
+                            }
+                          >
+                            <DropdownMenuRadioItem value="EDITOR">Editor</DropdownMenuRadioItem>
+                            <DropdownMenuRadioItem value="VIEWER">Viewer</DropdownMenuRadioItem>
+                          </DropdownMenuRadioGroup>
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem
+                            className="text-destructive focus:text-destructive"
+                            onClick={() => removeMemberMutation.mutate(member.id)}
+                          >
+                            <Trash2 className="mr-2 h-4 w-4" />
+                            Remove Member
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </div>
                   ) : (
                     getRoleBadge(member.role)
                   )}
