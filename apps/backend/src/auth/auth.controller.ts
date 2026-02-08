@@ -23,12 +23,12 @@ export class AuthController {
 
   @Post('register')
   async register(@Body() registerDto: RegisterDto) {
-    return this.authService.register(registerDto);
+    return this.authService.registerAndLogin(registerDto);
   }
 
   @UseGuards(AuthGuard('jwt'))
   @Get('profile')
-  getProfile(@Request() req: { user: SafeUser }) {
-    return req.user;
+  async getProfile(@Request() req: { user: { userId: string; email: string } }) {
+    return this.authService.getProfile(req.user.userId);
   }
 }

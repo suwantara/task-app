@@ -1,7 +1,6 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { UsersService } from '../users/users.service';
 import { JwtService } from '@nestjs/jwt';
-import { User } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 
 export interface SafeUser {
@@ -43,13 +42,24 @@ export class AuthService {
     };
   }
 
-  async register(data: RegisterInput): Promise<User> {
+  async registerAndLogin(data: RegisterInput): Promise<{ access_token: string; user: SafeUser }> {
     const salt = await bcrypt.genSalt();
     const passwordHash = await bcrypt.hash(data.password, salt);
     const { password, ...userData } = data;
-    return this.usersService.create({
+    const created = await this.usersService.create({
       ...userData,
       passwordHash,
     });
+    const { passwordHash: _, ...safeUser } = created;
+    return this.login(safeUser);
+  }
+
+  async getProfile(userId: string): Promise<SafeUser> {
+    const user = await this.usersService.findById(userId);
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+    const { passwordHash, ...safeUser } = user;
+    return safeUser;
   }
 }
