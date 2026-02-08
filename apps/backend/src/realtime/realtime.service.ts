@@ -68,6 +68,14 @@ export class RealtimeService {
     });
   }
 
+  // Workspace events
+  emitWorkspaceDeleted(workspaceId: string) {
+    void this.cache.publish(`workspace:${workspaceId}`, {
+      event: 'workspace:deleted',
+      data: { id: workspaceId },
+    });
+  }
+
   // Presence
   emitPresenceUpdate(room: string, data: unknown) {
     void this.cache.publish(room, {

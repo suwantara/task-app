@@ -1,21 +1,43 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useCallback } from 'react';
 import { useAuth } from '@/contexts/auth-context';
 import { useRouter } from 'next/navigation';
 import { SidebarProvider, SidebarInset, SidebarTrigger } from '@/components/ui/sidebar';
 import { AppSidebar } from '@/components/app-sidebar';
 import { Separator } from '@/components/ui/separator';
 import { SocketProvider } from '@/contexts/socket-context';
-import { WorkspaceProvider } from '@/contexts/workspace-context';
+import { WorkspaceProvider, useWorkspace } from '@/contexts/workspace-context';
 import { PresenceIndicator } from '@/components/presence-indicator';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { usePagePresence } from '@/hooks/use-page-presence';
+import { useWorkspaceRealtime } from '@/hooks/use-realtime';
+import { useQueryClient } from '@tanstack/react-query';
+import { queryKeys } from '@/hooks/use-queries';
 import { RealTimeClock } from '@/components/realtime-clock';
 
 // Wrapper component to use hooks inside SocketProvider
 function PagePresenceTracker() {
   usePagePresence();
+  return null;
+}
+
+/** Listens for workspace:deleted events and redirects members to dashboard */
+function WorkspaceDeletedListener() {
+  const { activeWorkspace, setActiveWorkspace } = useWorkspace();
+  const router = useRouter();
+  const qc = useQueryClient();
+
+  const handleWorkspaceDeleted = useCallback(() => {
+    setActiveWorkspace(null);
+    void qc.invalidateQueries({ queryKey: queryKeys.workspaces });
+    router.push('/dashboard');
+  }, [setActiveWorkspace, qc, router]);
+
+  useWorkspaceRealtime(activeWorkspace?.id || null, {
+    onWorkspaceDeleted: handleWorkspaceDeleted,
+  });
+
   return null;
 }
 
@@ -43,6 +65,7 @@ export default function AppLayout({ children }: Readonly<{ children: React.React
     <SocketProvider>
       <WorkspaceProvider>
         <PagePresenceTracker />
+        <WorkspaceDeletedListener />
         <TooltipProvider delayDuration={200}>
           <SidebarProvider>
             <AppSidebar />

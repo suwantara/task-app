@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CacheService } from '../cache/cache.service';
+import { RealtimeService } from '../realtime/realtime.service';
 import { CreateWorkspaceDto } from './dto/create-workspace.dto';
 import { UpdateWorkspaceDto } from './dto/update-workspace.dto';
 import {
@@ -45,6 +46,7 @@ export class WorkspacesService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly cache: CacheService,
+    private readonly realtime: RealtimeService,
   ) {}
 
   private readonly getCacheKey = {
@@ -203,6 +205,9 @@ export class WorkspacesService {
     if (workspace.ownerId !== userId) {
       throw new ForbiddenException('Only the owner can delete the workspace');
     }
+
+    // Notify all connected members before deletion
+    this.realtime.emitWorkspaceDeleted(id);
 
     const deleted = await this.prisma.workspace.delete({
       where: { id },

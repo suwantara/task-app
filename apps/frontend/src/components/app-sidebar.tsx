@@ -10,6 +10,9 @@ import { ShareDialog } from '@/components/share-dialog';
 import { WorkspaceMembers } from '@/components/workspace-members';
 import { JoinWorkspaceDialog } from '@/components/join-workspace-dialog';
 import { Input } from '@/components/ui/input';
+import { apiClient } from '@/lib/api';
+import { useQueryClient } from '@tanstack/react-query';
+import { queryKeys } from '@/hooks/use-queries';
 import {
   Sidebar,
   SidebarContent,
@@ -97,6 +100,9 @@ export function AppSidebar() {
   const [renamingBoard, setRenamingBoard] = useState<Board | null>(null);
   const [renameValue, setRenameValue] = useState('');
   const [deletingBoard, setDeletingBoard] = useState<Board | null>(null);
+  const [deletingWorkspace, setDeletingWorkspace] = useState(false);
+  const [deleteLoading, setDeleteLoading] = useState(false);
+  const qc = useQueryClient();
 
   // Helper to check if current user is owner (with fallback to members array)
   const isCurrentUserOwner = (workspace: typeof activeWorkspace) => {
@@ -133,6 +139,22 @@ export function AppSidebar() {
       }
     } catch (error) {
       console.error('Failed to delete board:', error);
+    }
+  };
+
+  const handleDeleteWorkspace = async () => {
+    if (!activeWorkspace) return;
+    setDeleteLoading(true);
+    try {
+      await apiClient.deleteWorkspace(activeWorkspace.id);
+      setDeletingWorkspace(false);
+      setActiveWorkspace(null);
+      await qc.invalidateQueries({ queryKey: queryKeys.workspaces });
+      router.push('/dashboard');
+    } catch (error) {
+      console.error('Failed to delete workspace:', error);
+    } finally {
+      setDeleteLoading(false);
     }
   };
 
@@ -198,6 +220,18 @@ export function AppSidebar() {
                     <Users className="mr-2 size-4" />
                     Members & Settings
                   </DropdownMenuItem>
+                )}
+                {activeWorkspace && isCurrentUserOwner(activeWorkspace) && (
+                  <>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem
+                      onClick={() => setDeletingWorkspace(true)}
+                      className="text-destructive focus:text-destructive"
+                    >
+                      <Trash2 className="mr-2 size-4" />
+                      Delete Workspace
+                    </DropdownMenuItem>
+                  </>
                 )}
                 <DropdownMenuSeparator />
                 <DropdownMenuItem
@@ -471,6 +505,29 @@ export function AppSidebar() {
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
               Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Delete Workspace Confirmation */}
+      <AlertDialog open={deletingWorkspace} onOpenChange={(open) => !open && setDeletingWorkspace(false)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Workspace</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete &quot;{activeWorkspace?.name}&quot;?
+              This will permanently remove all boards, tasks, notes, and members. This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleteLoading}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDeleteWorkspace}
+              disabled={deleteLoading}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {deleteLoading ? 'Deleting...' : 'Delete Workspace'}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

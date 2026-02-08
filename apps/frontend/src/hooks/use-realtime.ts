@@ -171,3 +171,38 @@ export function useNoteRealtime(
 
   return { emitTyping, emitStopTyping };
 }
+
+/**
+ * Listen for workspace:deleted events. When a workspace is deleted,
+ * all connected members (including the owner) are notified and
+ * the provided callback is invoked (e.g., to redirect to dashboard).
+ */
+export function useWorkspaceRealtime(
+  workspaceId: string | null,
+  callbacks: { onWorkspaceDeleted?: (data: { id: string }) => void },
+) {
+  const { socket, joinRoom, leaveRoom } = useSocket();
+  const cbRef = useRef(callbacks);
+  cbRef.current = callbacks;
+
+  // Join the workspace room (may already be joined by useNoteRealtime — rooms are deduped by Socket.IO)
+  useEffect(() => {
+    if (!workspaceId) return;
+    const room = `workspace:${workspaceId}`;
+    joinRoom(room);
+    return () => {
+      leaveRoom(room);
+    };
+  }, [workspaceId, joinRoom, leaveRoom]);
+
+  useEffect(() => {
+    if (!socket) return;
+
+    const onDeleted = (d: { id: string }) => cbRef.current.onWorkspaceDeleted?.(d);
+    socket.on('workspace:deleted', onDeleted);
+
+    return () => {
+      socket.off('workspace:deleted', onDeleted);
+    };
+  }, [socket]);
+}

@@ -3,6 +3,7 @@ import { WorkspacesService } from './workspaces.service';
 
 import { PrismaService } from '../prisma/prisma.service';
 import { CacheService } from '../cache/cache.service';
+import { RealtimeService } from '../realtime/realtime.service';
 
 describe('WorkspacesService', () => {
   let service: WorkspacesService;
@@ -34,6 +35,12 @@ describe('WorkspacesService', () => {
             del: jest.fn(),
             delPattern: jest.fn(),
             getOrSet: jest.fn(),
+          },
+        },
+        {
+          provide: RealtimeService,
+          useValue: {
+            emitWorkspaceDeleted: jest.fn(),
           },
         },
       ],

@@ -93,6 +93,10 @@ class ApiClient {
     return this.request<Workspace>(`/workspaces/${id}`);
   }
 
+  async deleteWorkspace(id: string) {
+    return this.request<void>(`/workspaces/${id}`, { method: 'DELETE' });
+  }
+
   // Board endpoints
   async getBoards(workspaceId: string) {
     return this.request<Board[]>(`/boards?workspaceId=${workspaceId}`);
