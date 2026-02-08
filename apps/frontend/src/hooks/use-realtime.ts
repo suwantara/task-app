@@ -35,7 +35,7 @@ interface NoteRealtimeCallbacks {
 export function useBoardRealtime(boardId: string | null, callbacks: RealtimeCallbacks) {
   const { socket, joinRoom, leaveRoom } = useSocket();
   const cbRef = useRef(callbacks);
-  cbRef.current = callbacks;
+  useEffect(() => { cbRef.current = callbacks; });
 
   useEffect(() => {
     if (!boardId) return;
@@ -103,7 +103,7 @@ export function useNoteRealtime(
 ) {
   const { socket, joinRoom, leaveRoom } = useSocket();
   const cbRef = useRef(callbacks);
-  cbRef.current = callbacks;
+  useEffect(() => { cbRef.current = callbacks; });
 
   useEffect(() => {
     if (!workspaceId) return;
@@ -183,7 +183,7 @@ export function useWorkspaceRealtime(
 ) {
   const { socket, joinRoom, leaveRoom } = useSocket();
   const cbRef = useRef(callbacks);
-  cbRef.current = callbacks;
+  useEffect(() => { cbRef.current = callbacks; });
 
   // Join the workspace room (may already be joined by useNoteRealtime — rooms are deduped by Socket.IO)
   useEffect(() => {

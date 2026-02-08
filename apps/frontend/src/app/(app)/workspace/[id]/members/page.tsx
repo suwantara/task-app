@@ -13,8 +13,6 @@ import {
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-  DropdownMenuRadioGroup,
-  DropdownMenuRadioItem,
 } from '@/components/ui/dropdown-menu';
 import {
   Select,
@@ -178,7 +176,7 @@ export default function WorkspaceMembersPage() {
   };
 
   const copyInviteLink = (code: string, role: string) => {
-    const link = `${window.location.origin}/join/${code}`;
+    const link = `${globalThis.window.location.origin}/join/${code}`;
     navigator.clipboard.writeText(link);
     toast.success('Link Copied!', { description: `${role} invite link copied` });
   };
@@ -187,13 +185,13 @@ export default function WorkspaceMembersPage() {
     switch (role) {
       case 'OWNER':
         return (
-          <Badge className="bg-gradient-to-r from-amber-500 to-orange-500 text-white border-0 shadow-sm">
+          <Badge className="bg-linear-to-r from-amber-500 to-orange-500 text-white border-0 shadow-sm">
             <Crown className="h-3 w-3 mr-1" /> Owner
           </Badge>
         );
       case 'EDITOR':
         return (
-          <Badge className="bg-gradient-to-r from-blue-500 to-indigo-500 text-white border-0 shadow-sm">
+          <Badge className="bg-linear-to-r from-blue-500 to-indigo-500 text-white border-0 shadow-sm">
             <Pencil className="h-3 w-3 mr-1" /> Editor
           </Badge>
         );
@@ -210,13 +208,13 @@ export default function WorkspaceMembersPage() {
 
   const getAvatarColor = (name: string) => {
     const colors = [
-      'bg-gradient-to-br from-pink-500 to-rose-500',
-      'bg-gradient-to-br from-violet-500 to-purple-500',
-      'bg-gradient-to-br from-blue-500 to-cyan-500',
-      'bg-gradient-to-br from-emerald-500 to-teal-500',
-      'bg-gradient-to-br from-amber-500 to-orange-500',
+      'bg-linear-to-br from-pink-500 to-rose-500',
+      'bg-linear-to-br from-violet-500 to-purple-500',
+      'bg-linear-to-br from-blue-500 to-cyan-500',
+      'bg-linear-to-br from-emerald-500 to-teal-500',
+      'bg-linear-to-br from-amber-500 to-orange-500',
     ];
-    const index = name.charCodeAt(0) % colors.length;
+    const index = name.codePointAt(0)! % colors.length;
     return colors[index];
   };
 
@@ -240,7 +238,7 @@ export default function WorkspaceMembersPage() {
       {/* Header */}
       <div className="space-y-2">
         <div className="flex items-center gap-3">
-          <div className="p-2 rounded-lg bg-gradient-to-br from-primary/20 to-primary/5 border">
+          <div className="p-2 rounded-lg bg-linear-to-br from-primary/20 to-primary/5 border">
             <Users className="h-6 w-6 text-primary" />
           </div>
           <div>
@@ -269,8 +267,8 @@ export default function WorkspaceMembersPage() {
           <CardContent className="space-y-4">
             <div className="grid gap-4 md:grid-cols-2">
               {/* Editor Code */}
-              <div className="group relative overflow-hidden rounded-xl border bg-gradient-to-br from-blue-500/5 to-indigo-500/10 p-5 transition-all hover:shadow-md hover:border-blue-500/30">
-                <div className="absolute inset-0 bg-gradient-to-br from-blue-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+              <div className="group relative overflow-hidden rounded-xl border bg-linear-to-br from-blue-500/5 to-indigo-500/10 p-5 transition-all hover:shadow-md hover:border-blue-500/30">
+                <div className="absolute inset-0 bg-linear-to-br from-blue-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
                 <div className="relative space-y-3">
                   <div className="flex items-center justify-between">
                     <span className="font-medium flex items-center gap-2 text-sm">
@@ -314,8 +312,8 @@ export default function WorkspaceMembersPage() {
               </div>
 
               {/* Viewer Code */}
-              <div className="group relative overflow-hidden rounded-xl border bg-gradient-to-br from-slate-500/5 to-gray-500/10 p-5 transition-all hover:shadow-md hover:border-slate-500/30">
-                <div className="absolute inset-0 bg-gradient-to-br from-slate-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+              <div className="group relative overflow-hidden rounded-xl border bg-linear-to-br from-slate-500/5 to-gray-500/10 p-5 transition-all hover:shadow-md hover:border-slate-500/30">
+                <div className="absolute inset-0 bg-linear-to-br from-slate-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
                 <div className="relative space-y-3">
                   <div className="flex items-center justify-between">
                     <span className="font-medium flex items-center gap-2 text-sm">
@@ -374,7 +372,7 @@ export default function WorkspaceMembersPage() {
                 Team Members
               </CardTitle>
               <CardDescription>
-                {members.length} member{members.length !== 1 ? 's' : ''} in this workspace
+                {members.length} member{members.length === 1 ? '' : 's'} in this workspace
               </CardDescription>
             </div>
           </div>
@@ -384,9 +382,7 @@ export default function WorkspaceMembersPage() {
             {members.map((member, index) => (
               <div
                 key={member.id}
-                className={`flex items-center justify-between p-4 transition-colors hover:bg-muted/50 ${
-                  index === 0 ? '' : ''
-                }`}
+                className="flex items-center justify-between p-4 transition-colors hover:bg-muted/50"
               >
                 <div className="flex items-center gap-4">
                   <Avatar className={`h-11 w-11 ${getAvatarColor(member.user.name)}`}>
@@ -402,7 +398,9 @@ export default function WorkspaceMembersPage() {
                 <div className="flex items-center gap-3">
                   {member.role === 'OWNER' ? (
                     getRoleBadge(member.role)
-                  ) : isOwner ? (
+                  ) : !isOwner ? (
+                    getRoleBadge(member.role)
+                  ) : (
                     <div className="flex items-center gap-2">
                       <Select
                         value={member.role}
@@ -445,8 +443,6 @@ export default function WorkspaceMembersPage() {
                         </DropdownMenuContent>
                       </DropdownMenu>
                     </div>
-                  ) : (
-                    getRoleBadge(member.role)
                   )}
                 </div>
               </div>

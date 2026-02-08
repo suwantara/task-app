@@ -558,7 +558,7 @@ export default function BoardPage() {
                           className="min-h-15 resize-none border-0 p-1 text-sm shadow-none focus-visible:ring-0"
                           rows={2}
                         />
-                        <div className="mt-1 flex items-center gap-1">
+                        <div className="mt-3 flex items-center gap-1">
                           <Button
                             size="sm"
                             className="h-7 text-xs"
@@ -615,7 +615,7 @@ export default function BoardPage() {
                     }}
                     className="mb-2"
                   />
-                  <div className="flex items-center gap-1">
+                  <div className="flex items-center gap-3">
                     <Button size="sm" type="submit" className="h-7 text-xs">
                       Add list
                     </Button>
