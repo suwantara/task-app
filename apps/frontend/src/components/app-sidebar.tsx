@@ -58,6 +58,7 @@ import {
   Kanban,
   StickyNote,
   Table2,
+  CalendarDays,
   Plus,
   LogOut,
   ChevronsUpDown,
@@ -239,6 +240,19 @@ export function AppSidebar() {
                   <Link href="/tasks">
                     <Table2 />
                     <span>Table View</span>
+                  </Link>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  asChild
+                  isActive={isActive('/calendar')}
+                  tooltip="Calendar"
+                >
+                  <Link href="/calendar">
+                    <CalendarDays />
+                    <span>Calendar</span>
                   </Link>
                 </SidebarMenuButton>
               </SidebarMenuItem>
