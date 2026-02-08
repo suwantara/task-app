@@ -197,6 +197,17 @@ export function SimpleEditor({ content: initialContent = '', onChange, placehold
   )
   const toolbarRef = useRef<HTMLDivElement>(null)
 
+  // Check if ydoc is ready for collaboration (fragment must be accessible)
+  const ydocReady = useMemo(() => {
+    if (!ydoc || typeof ydoc.get !== 'function') return false
+    try {
+      const fragment = ydoc.getXmlFragment('prosemirror')
+      return !!fragment
+    } catch {
+      return false
+    }
+  }, [ydoc])
+
   // Build extensions array - conditionally include Yjs collaboration
   const extensions = useMemo(() => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -207,8 +218,8 @@ export function SimpleEditor({ content: initialContent = '', onChange, placehold
           openOnClick: false,
           enableClickSelection: true,
         },
-        // Disable history only when using Yjs
-        ...(ydoc ? { history: false } : {}),
+        // Disable history only when using Yjs AND it's ready
+        ...(ydocReady ? { history: false } : {}),
       }),
       HorizontalRule,
       TextAlign.configure({ types: ["heading", "paragraph"] }),
@@ -229,13 +240,15 @@ export function SimpleEditor({ content: initialContent = '', onChange, placehold
       }),
     ]
 
-    // Add Yjs collaboration if ydoc is provided and valid
-    // Defensive check: ensure ydoc exists and has the required internals
-    if (ydoc && typeof ydoc.get === 'function') {
+    // Only add Yjs collaboration if ydoc is fully ready
+    if (ydocReady && ydoc) {
       try {
+        const fragment = ydoc.getXmlFragment('prosemirror')
+        
         baseExtensions.push(
           Collaboration.configure({
             document: ydoc,
+            fragment,
           })
         )
         
@@ -256,7 +269,7 @@ export function SimpleEditor({ content: initialContent = '', onChange, placehold
     }
 
     return baseExtensions
-  }, [ydoc, awareness, user])
+  }, [ydoc, ydocReady, awareness, user])
 
 
   const editor = useEditor({
@@ -271,7 +284,8 @@ export function SimpleEditor({ content: initialContent = '', onChange, placehold
       },
     },
     extensions,
-    content: ydoc ? undefined : (initialContent || ''),
+    // Only skip content when ydoc is actually ready for collaboration
+    content: ydocReady ? undefined : (initialContent || ''),
     onUpdate: ({ editor: e }) => {
       onChange?.(e.getHTML())
     },

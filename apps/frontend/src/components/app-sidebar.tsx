@@ -45,6 +45,7 @@ import {
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
@@ -420,6 +421,9 @@ export function AppSidebar() {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Rename Board</DialogTitle>
+            <DialogDescription>
+              Enter a new name for this board.
+            </DialogDescription>
           </DialogHeader>
           <form onSubmit={(e) => { e.preventDefault(); handleRenameBoard(); }}>
             <div className="py-4">
