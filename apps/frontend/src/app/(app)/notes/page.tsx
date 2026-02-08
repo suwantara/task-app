@@ -29,7 +29,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { SimpleEditor } from '@/components/tiptap-templates/simple/simple-editor';
-import { Plus, FileText, Clock, Search, Pencil, Trash2, MoreHorizontal, Check, Loader2, PenLine } from 'lucide-react';
+import { Plus, FileText, Clock, Search, Pencil, Trash2, MoreHorizontal, Check, Loader2, PenLine, RefreshCw } from 'lucide-react';
 
 export default function NotesPage() {
   const { user, loading: authLoading } = useAuthGuard();
@@ -384,6 +384,15 @@ export default function NotesPage() {
             <span className="text-xs text-muted-foreground truncate max-w-24">
               {activeWorkspace?.name || 'No workspace'}
             </span>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7 w-7 p-0"
+              onClick={() => qc.invalidateQueries({ queryKey: queryKeys.notes(workspaceId) })}
+              title="Refresh notes"
+            >
+              <RefreshCw className="size-3.5" />
+            </Button>
             <Button
               variant="ghost"
               size="sm"
