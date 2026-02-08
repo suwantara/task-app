@@ -4,6 +4,7 @@ import { NotesService } from './notes.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { CacheService } from '../cache/cache.service';
 import { RealtimeService } from '../realtime/realtime.service';
+import { PermissionsService } from '../common/permissions.service';
 
 describe('NotesService', () => {
   let service: NotesService;
@@ -59,6 +60,13 @@ describe('NotesService', () => {
             emitNoteUpdated: jest.fn(),
             emitNoteDeleted: jest.fn(),
             emitPresenceUpdate: jest.fn(),
+          },
+        },
+        {
+          provide: PermissionsService,
+          useValue: {
+            validateWorkspaceAccess: jest.fn().mockResolvedValue({ workspaceId: 'ws-1' }),
+            validateNoteAccess: jest.fn().mockResolvedValue({ workspaceId: 'ws-1' }),
           },
         },
       ],

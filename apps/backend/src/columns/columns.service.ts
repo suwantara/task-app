@@ -1,10 +1,10 @@
 import {
   Injectable,
   NotFoundException,
-  ForbiddenException,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CacheService } from '../cache/cache.service';
+import { PermissionsService } from '../common/permissions.service';
 import { RealtimeService } from '../realtime/realtime.service';
 import { CreateColumnDto } from './dto/create-column.dto';
 import { UpdateColumnDto } from './dto/update-column.dto';
@@ -14,62 +14,27 @@ export class ColumnsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly cache: CacheService,
+    private readonly permissions: PermissionsService,
     private readonly realtime: RealtimeService,
   ) {}
 
   async create(userId: string, createColumnDto: CreateColumnDto) {
-    // Verify board access — single query with filtered member check
-    const board = await this.prisma.board.findUnique({
-      where: { id: createColumnDto.boardId },
-      include: {
-        workspace: {
-          select: {
-            members: { where: { userId }, take: 1, select: { userId: true } },
-          },
-        },
-      },
-    });
+    await this.permissions.validateBoardAccess(userId, createColumnDto.boardId);
 
-    if (!board) throw new NotFoundException('Board not found');
-
-    if (!board.workspace.members[0]) throw new ForbiddenException('Access denied');
-
-    // Calculate position if not provided
-    let position = createColumnDto.order;
-    if (position === undefined) {
-      const lastColumn = await this.prisma.column.findFirst({
-        where: { boardId: createColumnDto.boardId },
-        orderBy: { position: 'desc' },
-      });
-      position = lastColumn ? lastColumn.position + 1 : 0;
-    }
+    const position = createColumnDto.order ?? await this.getNextPosition(createColumnDto.boardId);
 
     return this.prisma.column.create({
       data: {
         name: createColumnDto.name,
         boardId: createColumnDto.boardId,
-        position: position,
+        position,
       },
       include: { tasks: true },
     });
   }
 
   async findAll(userId: string, boardId: string) {
-    // Verify access — single query with filtered member check
-    const board = await this.prisma.board.findUnique({
-      where: { id: boardId },
-      include: {
-        workspace: {
-          select: {
-            members: { where: { userId }, take: 1, select: { userId: true } },
-          },
-        },
-      },
-    });
-
-    if (!board) throw new NotFoundException('Board not found');
-
-    if (!board.workspace.members[0]) throw new ForbiddenException('Access denied');
+    await this.permissions.validateBoardAccess(userId, boardId);
 
     return this.prisma.column.findMany({
       where: { boardId },
@@ -81,24 +46,12 @@ export class ColumnsService {
   async findOne(id: string, userId: string) {
     const column = await this.prisma.column.findUnique({
       where: { id },
-      include: {
-        board: {
-          include: {
-            workspace: {
-              select: {
-                members: { where: { userId }, take: 1, select: { userId: true } },
-              },
-            },
-          },
-        },
-        tasks: true,
-      },
+      include: { tasks: true },
     });
 
     if (!column) throw new NotFoundException('Column not found');
 
-    if (!column.board.workspace.members[0])
-      throw new ForbiddenException('Access denied');
+    await this.permissions.validateBoardAccess(userId, column.boardId);
 
     return column;
   }
@@ -106,44 +59,27 @@ export class ColumnsService {
   async update(id: string, userId: string, updateColumnDto: UpdateColumnDto) {
     const column = await this.prisma.column.findUnique({
       where: { id },
-      include: {
-        board: {
-          include: {
-            workspace: {
-              select: {
-                members: { where: { userId }, take: 1, select: { userId: true } },
-              },
-            },
-          },
-        },
-      },
+      select: { id: true, boardId: true },
     });
 
     if (!column) throw new NotFoundException('Column not found');
 
-    if (!column.board.workspace.members[0])
-      throw new ForbiddenException('Access denied');
+    await this.permissions.validateBoardAccess(userId, column.boardId);
 
-    const boardId = column.boardId;
-
-    // Optimistic Update (For broadcast)
     const updatedColumnOptimistic = {
       ...column,
       ...updateColumnDto,
-      updatedAt: new Date(), // Ensure we send a valid date object or string depending on what frontend expects, Date is fine for socket.io usually
+      updatedAt: new Date(),
     };
 
-    // Broadcast immediately
-    this.realtime.emitColumnUpdated(boardId, updatedColumnOptimistic);
+    this.realtime.emitColumnUpdated(column.boardId, updatedColumnOptimistic);
 
-    // Persist to Database
     const updated = await this.prisma.column.update({
       where: { id },
       data: updateColumnDto,
     });
 
-    // Invalidate Board Cache
-    await this.cache.del(`board:${boardId}`);
+    await this.cache.del(`board:${column.boardId}`);
 
     return updated;
   }
@@ -151,26 +87,23 @@ export class ColumnsService {
   async remove(id: string, userId: string) {
     const column = await this.prisma.column.findUnique({
       where: { id },
-      include: {
-        board: {
-          include: {
-            workspace: {
-              select: {
-                members: { where: { userId }, take: 1, select: { userId: true } },
-              },
-            },
-          },
-        },
-      },
+      select: { id: true, boardId: true },
     });
 
     if (!column) throw new NotFoundException('Column not found');
 
-    if (!column.board.workspace.members[0])
-      throw new ForbiddenException('Access denied');
+    await this.permissions.validateBoardAccess(userId, column.boardId);
 
-    return this.prisma.column.delete({
-      where: { id },
+    return this.prisma.column.delete({ where: { id } });
+  }
+
+  /** Calculate next position for a new column in a board. */
+  private async getNextPosition(boardId: string): Promise<number> {
+    const lastColumn = await this.prisma.column.findFirst({
+      where: { boardId },
+      orderBy: { position: 'desc' },
+      select: { position: true },
     });
+    return lastColumn ? lastColumn.position + 1 : 0;
   }
 }

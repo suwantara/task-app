@@ -4,13 +4,13 @@ export class UpdateUserDto {
   @IsOptional()
   @IsString()
   @MinLength(1)
-  name?: string;
+  readonly name?: string;
 
   @IsOptional()
   @IsEmail()
-  email?: string;
+  readonly email?: string;
 
   @IsOptional()
   @IsString()
-  avatarUrl?: string;
+  readonly avatarUrl?: string;
 }

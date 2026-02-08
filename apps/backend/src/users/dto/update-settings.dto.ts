@@ -3,21 +3,21 @@ import { IsString, IsOptional, IsBoolean } from 'class-validator';
 export class UpdateSettingsDto {
   @IsOptional()
   @IsString()
-  language?: string;
+  readonly language?: string;
 
   @IsOptional()
   @IsString()
-  timezone?: string;
+  readonly timezone?: string;
 
   @IsOptional()
   @IsBoolean()
-  emailNotifications?: boolean;
+  readonly emailNotifications?: boolean;
 
   @IsOptional()
   @IsBoolean()
-  pushNotifications?: boolean;
+  readonly pushNotifications?: boolean;
 
   @IsOptional()
   @IsBoolean()
-  realtimeNotifications?: boolean;
+  readonly realtimeNotifications?: boolean;
 }

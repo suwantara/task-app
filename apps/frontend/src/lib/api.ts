@@ -286,130 +286,150 @@ class ApiClient {
   }
 }
 
-// Types
-interface User {
-  id: string;
-  email: string;
-  name: string;
-  avatarUrl?: string;
+// ─── Shared Types (canonical frontend definitions) ─────────────
+
+export type MemberRole = 'OWNER' | 'EDITOR' | 'VIEWER';
+export type TaskPriority = 'LOW' | 'MEDIUM' | 'HIGH';
+
+export const PRIORITY_CONFIG: Record<TaskPriority, { readonly label: string; readonly color: string }> = {
+  HIGH: { label: 'High', color: 'bg-red-500' },
+  MEDIUM: { label: 'Medium', color: 'bg-amber-500' },
+  LOW: { label: 'Low', color: 'bg-emerald-500' },
+} as const;
+
+export interface User {
+  readonly id: string;
+  readonly email: string;
+  readonly name: string;
+  readonly avatarUrl?: string;
 }
 
-interface Workspace {
-  id: string;
-  name: string;
-  ownerId: string;
-  createdAt: string;
-  updatedAt: string;
-  members?: WorkspaceMember[];
-  _count?: { members: number };
+export interface Workspace {
+  readonly id: string;
+  readonly name: string;
+  readonly ownerId: string;
+  readonly createdAt: string;
+  readonly updatedAt: string;
+  readonly members?: readonly WorkspaceMember[];
+  readonly _count?: { readonly members: number };
 }
 
-interface WorkspaceMember {
-  id: string;
-  workspaceId: string;
-  userId: string;
-  role: 'OWNER' | 'EDITOR' | 'VIEWER';
-  joinedAt: string;
-  user: {
-    id: string;
-    name: string;
-    email: string;
-    avatarUrl?: string;
+export interface WorkspaceMember {
+  readonly id: string;
+  readonly workspaceId: string;
+  readonly userId: string;
+  readonly role: MemberRole;
+  readonly joinedAt: string;
+  readonly user: {
+    readonly id: string;
+    readonly name: string;
+    readonly email: string;
+    readonly avatarUrl?: string;
   };
 }
 
-interface InviteLink {
-  id: string;
-  workspaceId: string;
-  token: string;
-  role: 'OWNER' | 'EDITOR' | 'VIEWER';
-  isActive: boolean;
-  expiresAt?: string;
-  maxUses?: number;
-  useCount: number;
-  createdById: string;
-  createdAt: string;
-  createdBy?: {
-    id: string;
-    name: string;
-    email: string;
+export interface InviteLink {
+  readonly id: string;
+  readonly workspaceId: string;
+  readonly token: string;
+  readonly role: MemberRole;
+  readonly isActive: boolean;
+  readonly expiresAt?: string;
+  readonly maxUses?: number;
+  readonly useCount: number;
+  readonly createdById: string;
+  readonly createdAt: string;
+  readonly createdBy?: {
+    readonly id: string;
+    readonly name: string;
+    readonly email: string;
   };
 }
 
-interface InviteLinkInfo {
-  workspaceName: string;
-  role: string;
-  isActive: boolean;
-  isExpired: boolean;
-  isMaxedOut: boolean;
-  memberCount: number;
+export interface InviteLinkInfo {
+  readonly workspaceName: string;
+  readonly role: string;
+  readonly isActive: boolean;
+  readonly isExpired: boolean;
+  readonly isMaxedOut: boolean;
+  readonly memberCount: number;
 }
 
-interface Board {
-  id: string;
-  workspaceId: string;
-  name: string;
-  description?: string;
-  createdAt: string;
-  updatedAt: string;
+export interface Board {
+  readonly id: string;
+  readonly workspaceId: string;
+  readonly name: string;
+  readonly description?: string;
+  readonly createdAt: string;
+  readonly updatedAt: string;
 }
 
-interface Column {
-  id: string;
-  boardId: string;
-  name: string;
-  position: number;
-  createdAt: string;
-  updatedAt: string;
+export interface Column {
+  readonly id: string;
+  readonly boardId: string;
+  readonly name: string;
+  readonly position: number;
+  readonly createdAt: string;
+  readonly updatedAt: string;
 }
 
-interface Task {
-  id: string;
-  workspaceId: string;
-  boardId: string;
-  columnId: string;
-  title: string;
-  description?: string;
-  priority: 'LOW' | 'MEDIUM' | 'HIGH';
-  position: number;
-  creatorId?: string;
-  assigneeId?: string;
-  dueDate?: string;
-  createdAt: string;
-  updatedAt: string;
+export interface Task {
+  readonly id: string;
+  readonly workspaceId: string;
+  readonly boardId: string;
+  readonly columnId: string;
+  readonly title: string;
+  readonly description?: string;
+  readonly priority: TaskPriority;
+  readonly position: number;
+  readonly creatorId?: string;
+  readonly assigneeId?: string;
+  readonly dueDate?: string;
+  readonly createdAt: string;
+  readonly updatedAt: string;
+  readonly assignee?: {
+    readonly id: string;
+    readonly name: string;
+    readonly avatarUrl?: string;
+  };
 }
 
-interface CreateTaskDto {
-  workspaceId: string;
-  boardId: string;
-  columnId: string;
-  title: string;
-  description?: string;
-  priority?: 'LOW' | 'MEDIUM' | 'HIGH';
-  dueDate?: string;
-  assigneeId?: string;
-  position: number;
+export interface CreateTaskDto {
+  readonly workspaceId: string;
+  readonly boardId: string;
+  readonly columnId: string;
+  readonly title: string;
+  readonly description?: string;
+  readonly priority?: TaskPriority;
+  readonly dueDate?: string;
+  readonly assigneeId?: string;
+  readonly position: number;
 }
 
-interface Note {
-  id: string;
-  workspaceId: string;
-  title: string;
-  content?: string;
-  icon?: string;
-  coverImage?: string;
-  createdAt: string;
-  updatedAt: string;
+export interface Note {
+  readonly id: string;
+  readonly workspaceId: string;
+  readonly title: string;
+  readonly content?: string;
+  readonly icon?: string;
+  readonly coverImage?: string;
+  readonly createdAt: string;
+  readonly updatedAt: string;
+  readonly creator?: {
+    readonly id: string;
+    readonly name: string;
+    readonly avatarUrl?: string;
+  };
 }
 
-interface UserSettings {
-  id: string;
-  userId: string;
-  language: string;
-  timezone: string;
-  emailNotifications: boolean;
-  pushNotifications: boolean;
-  realtimeNotifications: boolean;
+export interface UserSettings {
+  readonly id: string;
+  readonly userId: string;
+  readonly language: string;
+  readonly timezone: string;
+  readonly emailNotifications: boolean;
+  readonly pushNotifications: boolean;
+  readonly realtimeNotifications: boolean;
 }
 
 export const apiClient = new ApiClient(API_BASE_URL);

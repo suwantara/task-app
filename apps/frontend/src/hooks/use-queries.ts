@@ -4,9 +4,9 @@ import {
   useQuery,
   useMutation,
   useQueryClient,
-  type UseQueryOptions,
 } from '@tanstack/react-query';
 import { apiClient } from '@/lib/api';
+import type { TaskPriority } from '@/lib/api';
 
 // ─── Query Keys ────────────────────────────────────────────────
 
@@ -28,7 +28,7 @@ export const queryKeys = {
 
 // ─── Query Hooks ───────────────────────────────────────────────
 
-export function useWorkspaces(options?: Partial<UseQueryOptions>) {
+export function useWorkspaces(options?: { enabled?: boolean }) {
   return useQuery({
     queryKey: queryKeys.workspaces,
     queryFn: () => apiClient.getWorkspaces(),
@@ -187,7 +187,7 @@ export function useCreateTask() {
       columnId: string;
       title: string;
       description?: string;
-      priority?: 'LOW' | 'MEDIUM' | 'HIGH';
+      priority?: TaskPriority;
       position: number;
     }) => apiClient.createTask(data),
     onSuccess: (_result, variables) => {
@@ -200,7 +200,7 @@ export function useUpdateTask() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (data: { id: string; boardId: string; updates: Record<string, unknown> }) =>
-      apiClient.updateTask(data.id, data.updates as never),
+      apiClient.updateTask(data.id, data.updates),
     onSuccess: (_result, variables) => {
       qc.invalidateQueries({ queryKey: queryKeys.tasks(variables.boardId) });
     },

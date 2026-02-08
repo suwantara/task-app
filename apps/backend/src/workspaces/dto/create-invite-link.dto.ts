@@ -4,19 +4,19 @@ import { MemberRole } from '@prisma/client';
 export class CreateInviteLinkDto {
   @IsOptional()
   @IsEnum(MemberRole)
-  role?: MemberRole;
+  readonly role?: MemberRole;
 
   @IsOptional()
   @IsDateString()
-  expiresAt?: string;
+  readonly expiresAt?: string;
 
   @IsOptional()
   @IsInt()
   @Min(1)
-  maxUses?: number;
+  readonly maxUses?: number;
 }
 
 export class UpdateMemberRoleDto {
   @IsEnum(MemberRole)
-  role: MemberRole;
+  readonly role: MemberRole;
 }

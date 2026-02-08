@@ -3,9 +3,9 @@ import { IsNotEmpty, IsString, IsUUID } from 'class-validator';
 export class CreateBoardDto {
   @IsNotEmpty()
   @IsString()
-  name: string;
+  readonly name: string;
 
   @IsNotEmpty()
   @IsUUID()
-  workspaceId: string;
+  readonly workspaceId: string;
 }

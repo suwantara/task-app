@@ -11,33 +11,33 @@ import {
 export class CreateTaskDto {
   @IsNotEmpty()
   @IsString()
-  title: string;
+  readonly title: string;
 
   @IsOptional()
   @IsString()
-  description?: string;
+  readonly description?: string;
 
   @IsNotEmpty()
   @IsUUID()
-  columnId: string;
+  readonly columnId: string;
 
   @IsOptional()
   @IsNumber()
-  order?: number;
+  readonly order?: number;
 
   @IsOptional()
   @IsEnum(['LOW', 'MEDIUM', 'HIGH'])
-  priority?: 'LOW' | 'MEDIUM' | 'HIGH';
+  readonly priority?: 'LOW' | 'MEDIUM' | 'HIGH';
 
   @IsOptional()
   @IsDateString()
-  dueDate?: string;
+  readonly dueDate?: string;
 
   @IsOptional()
   @IsUUID()
-  assigneeId?: string;
+  readonly assigneeId?: string;
 
   @IsOptional()
   @IsString({ each: true })
-  labels?: string[];
+  readonly labels?: string[];
 }

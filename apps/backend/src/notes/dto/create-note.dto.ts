@@ -9,21 +9,21 @@ import {
 export class CreateNoteDto {
   @IsNotEmpty()
   @IsString()
-  title: string;
+  readonly title: string;
 
   @IsNotEmpty()
   @IsUUID()
-  workspaceId: string;
+  readonly workspaceId: string;
 
   @IsOptional()
   @IsString()
-  content?: string; // Rich text content (HTML or JSON string)
+  readonly content?: string; // Rich text content (HTML or JSON string)
 
   @IsOptional()
   @IsString()
-  emoji?: string;
+  readonly emoji?: string;
 
   @IsOptional()
   @IsUUID()
-  parentId?: string;
+  readonly parentId?: string;
 }

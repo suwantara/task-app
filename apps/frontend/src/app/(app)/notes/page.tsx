@@ -1,10 +1,11 @@
 'use client';
 
 import { useEffect, useState, useRef, useCallback } from 'react';
-import { useAuth } from '@/contexts/auth-context';
+import { useAuthGuard } from '@/hooks/use-auth-guard';
 import { useWorkspace } from '@/contexts/workspace-context';
-import { useRouter } from 'next/navigation';
 import { apiClient } from '@/lib/api';
+import type { Note } from '@/lib/api';
+import { PageLoading } from '@/components/page-loading';
 import { useNotes, useCreateNote, useUpdateNote, useDeleteNote, queryKeys } from '@/hooks/use-queries';
 import { useQueryClient } from '@tanstack/react-query';
 import { useNoteRealtime } from '@/hooks/use-realtime';
@@ -30,19 +31,8 @@ import {
 import { SimpleEditor } from '@/components/tiptap-templates/simple/simple-editor';
 import { Plus, Save, FileText, Clock, Search, Pencil, Trash2, MoreHorizontal, Check } from 'lucide-react';
 
-interface Note {
-  id: string;
-  title: string;
-  content?: string;
-  icon?: string;
-  workspaceId: string;
-  createdAt: string;
-  updatedAt: string;
-}
-
 export default function NotesPage() {
-  const { user, loading: authLoading } = useAuth();
-  const router = useRouter();
+  const { user, loading: authLoading } = useAuthGuard();
   const { activeWorkspace } = useWorkspace();
   const workspaceId = activeWorkspace?.id || '';
   const qc = useQueryClient();
@@ -123,12 +113,6 @@ export default function NotesPage() {
       }, [workspaceId]),
     },
   );
-
-  useEffect(() => {
-    if (!authLoading && !user) {
-      router.push('/auth/login');
-    }
-  }, [user, authLoading, router]);
 
   // Clear selected note when workspace changes
   useEffect(() => {
@@ -318,11 +302,7 @@ export default function NotesPage() {
 
 
   if (authLoading || loading) {
-    return (
-      <div className="flex items-center justify-center p-12">
-        <div className="text-lg text-muted-foreground">Loading...</div>
-      </div>
-    );
+    return <PageLoading />;
   }
 
   return (

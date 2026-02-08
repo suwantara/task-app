@@ -1,10 +1,12 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { useAuth } from '@/contexts/auth-context';
-import { useRouter, useParams } from 'next/navigation';
+import { useState } from 'react';
+import { useParams } from 'next/navigation';
 import Link from 'next/link';
+import { useAuthGuard } from '@/hooks/use-auth-guard';
+import { PageLoading } from '@/components/page-loading';
 import { useWorkspace, useBoards, useWorkspaceMembers, useCreateBoard, useUpdateBoard, useDeleteBoard } from '@/hooks/use-queries';
+import type { Workspace, WorkspaceMember, Board } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Card, CardDescription, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -39,37 +41,12 @@ import {
 } from '@/components/ui/alert-dialog';
 import { Plus, Share2, MoreHorizontal, Pencil, Trash2, Kanban } from 'lucide-react';
 
-interface WorkspaceMember {
-  id: string;
-  userId: string;
-  role: string;
-  user: {
-    id: string;
-    name: string;
-    email: string;
-    avatarUrl?: string;
-  };
-}
-
-interface Board {
-  id: string;
-  name: string;
-  description?: string;
-  createdAt: string;
-}
-
-interface Workspace {
-  id: string;
-  name: string;
-  ownerId: string;
-  createdAt: string;
-  updatedAt: string;
+interface WorkspaceWithMembers extends Omit<Workspace, 'members'> {
   members?: WorkspaceMember[];
 }
 
 export default function WorkspacePage() {
-  const { user, loading: authLoading } = useAuth();
-  const router = useRouter();
+  const { user, loading: authLoading } = useAuthGuard();
   const params = useParams();
   const workspaceId = params.id as string;
 
@@ -81,7 +58,7 @@ export default function WorkspacePage() {
   const updateBoardMutation = useUpdateBoard();
   const deleteBoardMutation = useDeleteBoard();
 
-  const workspace = workspaceData ? { ...workspaceData, members: membersData } as Workspace : null;
+  const workspace = workspaceData ? { ...workspaceData, members: membersData } as WorkspaceWithMembers : null;
   const loading = wsLoading || boardsLoading;
 
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -96,14 +73,8 @@ export default function WorkspacePage() {
   // Delete
   const [deletingBoard, setDeletingBoard] = useState<Board | null>(null);
 
-  useEffect(() => {
-    if (!authLoading && !user) {
-      router.push('/auth/login');
-    }
-  }, [user, authLoading, router]);
-
   // Helper to check if current user is owner (with fallback to members array)
-  const isCurrentUserOwner = (ws: Workspace | null) => {
+  const isCurrentUserOwner = (ws: WorkspaceWithMembers | null) => {
     if (!ws || !user?.id) return false;
     // Primary check: ownerId field
     if (ws.ownerId === user.id) return true;
@@ -148,11 +119,7 @@ export default function WorkspacePage() {
   };
 
   if (authLoading || loading) {
-    return (
-      <div className="flex items-center justify-center p-12">
-        <div className="text-lg text-muted-foreground">Loading...</div>
-      </div>
-    );
+    return <PageLoading />;
   }
 
   return (

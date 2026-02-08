@@ -5,6 +5,7 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CacheService } from '../cache/cache.service';
+import { PermissionsService } from '../common/permissions.service';
 import { CreateBoardDto } from './dto/create-board.dto';
 import { UpdateBoardDto } from './dto/update-board.dto';
 
@@ -13,27 +14,16 @@ export class BoardsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly cache: CacheService,
+    private readonly permissions: PermissionsService,
   ) {}
 
   private readonly getCacheKey = {
     boardsList: (workspaceId: string) => `boards:workspace:${workspaceId}`,
     board: (id: string) => `board:${id}`,
-  };
+  } as const;
 
   async create(userId: string, createBoardDto: CreateBoardDto) {
-    // Verify user is member of workspace
-    const membership = await this.prisma.workspaceMember.findUnique({
-      where: {
-        workspaceId_userId: {
-          workspaceId: createBoardDto.workspaceId,
-          userId: userId,
-        },
-      },
-    });
-
-    if (!membership) {
-      throw new ForbiddenException('You are not a member of this workspace');
-    }
+    await this.permissions.validateWorkspaceAccess(userId, createBoardDto.workspaceId);
 
     const board = await this.prisma.board.create({
       data: {
@@ -55,56 +45,35 @@ export class BoardsService {
       },
     });
 
-    // Invalidate boards list cache
-    await this.cache.del(
-      this.getCacheKey.boardsList(createBoardDto.workspaceId),
-    );
+    await this.cache.del(this.getCacheKey.boardsList(createBoardDto.workspaceId));
 
     return board;
   }
 
   async findAll(userId: string, workspaceId: string) {
-    // Verify access
-    const membership = await this.prisma.workspaceMember.findUnique({
-      where: {
-        workspaceId_userId: {
-          workspaceId: workspaceId,
-          userId: userId,
-        },
-      },
-    });
+    await this.permissions.validateWorkspaceAccess(userId, workspaceId);
 
-    if (!membership) {
-      throw new ForbiddenException('You are not a member of this workspace');
-    }
-
-    // Try cache first
     const cacheKey = this.getCacheKey.boardsList(workspaceId);
-    return this.cache.getOrSet(cacheKey, async () => {
-      return this.prisma.board.findMany({
+    return this.cache.getOrSet(cacheKey, () =>
+      this.prisma.board.findMany({
         where: { workspaceId },
-        include: {
-          _count: {
-            select: { tasks: true },
-          },
-        },
+        include: { _count: { select: { tasks: true } } },
         orderBy: { createdAt: 'desc' },
-      });
-    });
+      }),
+    );
   }
 
   async findOne(id: string, userId: string) {
-    // Try cache first
     const cacheKey = this.getCacheKey.board(id);
     const cached = await this.cache.get(cacheKey);
     if (cached) {
-      // Verify access on cached data
       const board = cached as {
         workspace: { members: { userId: string }[] };
       };
-      const isMember = board.workspace.members.some((m) => m.userId === userId);
-      if (isMember) return cached;
+      if (board.workspace.members.some((m) => m.userId === userId)) return cached;
     }
+
+    await this.permissions.validateBoardAccess(userId, id);
 
     const board = await this.prisma.board.findUnique({
       where: { id },
@@ -124,9 +93,7 @@ export class BoardsService {
             tasks: {
               orderBy: { position: 'asc' },
               include: {
-                assignee: {
-                  select: { id: true, name: true, avatarUrl: true },
-                },
+                assignee: { select: { id: true, name: true, avatarUrl: true } },
                 labels: true,
               },
             },
@@ -135,43 +102,26 @@ export class BoardsService {
       },
     });
 
-    if (!board) {
-      throw new NotFoundException(`Board with ID ${id} not found`);
-    }
+    if (!board) throw new NotFoundException('Board not found');
 
-    // Check access
-    if (!board.workspace.members[0]) {
-      throw new ForbiddenException('You do not have access to this board');
-    }
-
-    // Cache the result (shorter TTL for detailed data)
     await this.cache.set(cacheKey, board, 120);
-
     return board;
   }
 
   async update(id: string, userId: string, updateBoardDto: UpdateBoardDto) {
+    const member = await this.permissions.validateBoardAccess(userId, id);
+
     const board = await this.prisma.board.findUnique({
       where: { id },
-      include: {
-        workspace: {
-          select: {
-            members: { where: { userId }, take: 1, select: { userId: true } },
-          },
-        },
-      },
+      select: { workspaceId: true },
     });
-
     if (!board) throw new NotFoundException('Board not found');
-
-    if (!board.workspace.members[0]) throw new ForbiddenException('Access denied');
 
     const updated = await this.prisma.board.update({
       where: { id },
       data: { name: updateBoardDto.name },
     });
 
-    // Invalidate caches
     await Promise.all([
       this.cache.del(this.getCacheKey.board(id)),
       this.cache.del(this.getCacheKey.boardsList(board.workspaceId)),
@@ -181,18 +131,15 @@ export class BoardsService {
   }
 
   async remove(id: string, userId: string) {
+    const member = await this.permissions.validateBoardAccess(userId, id);
+
     const board = await this.prisma.board.findUnique({
       where: { id },
       select: {
         id: true,
         workspaceId: true,
         creatorId: true,
-        workspace: {
-          select: {
-            ownerId: true,
-            members: { where: { userId }, take: 1, select: { userId: true } },
-          },
-        },
+        workspace: { select: { ownerId: true } },
       },
     });
 

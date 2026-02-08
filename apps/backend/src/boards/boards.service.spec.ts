@@ -3,6 +3,7 @@ import { BoardsService } from './boards.service';
 
 import { PrismaService } from '../prisma/prisma.service';
 import { CacheService } from '../cache/cache.service';
+import { PermissionsService } from '../common/permissions.service';
 
 describe('BoardsService', () => {
   let service: BoardsService;
@@ -41,6 +42,13 @@ describe('BoardsService', () => {
             smembers: jest.fn().mockResolvedValue([]),
             setBuffer: jest.fn().mockResolvedValue(undefined),
             getBuffer: jest.fn().mockResolvedValue(null),
+          },
+        },
+        {
+          provide: PermissionsService,
+          useValue: {
+            validateWorkspaceAccess: jest.fn().mockResolvedValue({ workspaceId: 'ws-1' }),
+            validateBoardAccess: jest.fn().mockResolvedValue({ workspaceId: 'ws-1', boardId: 'board-1' }),
           },
         },
       ],

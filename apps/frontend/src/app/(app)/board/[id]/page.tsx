@@ -1,9 +1,10 @@
 'use client';
 
 import { useEffect, useState, useRef, useCallback } from 'react';
-import { useAuth } from '@/contexts/auth-context';
-import { useRouter, useParams } from 'next/navigation';
-import { apiClient } from '@/lib/api';
+import { useAuthGuard } from '@/hooks/use-auth-guard';
+import { useParams } from 'next/navigation';
+import { apiClient, PRIORITY_CONFIG } from '@/lib/api';
+import type { TaskPriority, Board, Column, Task } from '@/lib/api';
 import { useBoardRealtime } from '@/hooks/use-realtime';
 import { useBoard, useColumns as useColumnsQuery, useTasks as useTasksQuery, queryKeys } from '@/hooks/use-queries';
 import { useQueryClient } from '@tanstack/react-query';
@@ -44,47 +45,8 @@ import {
   Star,
 } from 'lucide-react';
 
-type Priority = 'LOW' | 'MEDIUM' | 'HIGH';
-
-interface Board {
-  id: string;
-  workspaceId: string;
-  name: string;
-  description?: string;
-}
-
-interface Column {
-  id: string;
-  boardId: string;
-  name: string;
-  position: number;
-}
-
-interface Task {
-  id: string;
-  title: string;
-  description?: string;
-  priority: Priority;
-  columnId: string;
-  position: number;
-  dueDate?: string;
-}
-
-const priorityColor: Record<Priority, string> = {
-  HIGH: 'bg-red-500',
-  MEDIUM: 'bg-amber-500',
-  LOW: 'bg-emerald-500',
-};
-
-const priorityLabel: Record<Priority, string> = {
-  HIGH: 'High',
-  MEDIUM: 'Medium',
-  LOW: 'Low',
-};
-
 export default function BoardPage() {
-  const { user, loading: authLoading } = useAuth();
-  const router = useRouter();
+  const { user, loading: authLoading } = useAuthGuard();
   const params = useParams();
   const boardId = params.id as string;
   const qc = useQueryClient();
@@ -116,7 +78,7 @@ export default function BoardPage() {
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [editTitle, setEditTitle] = useState('');
   const [editDescription, setEditDescription] = useState('');
-  const [editPriority, setEditPriority] = useState<Priority>('MEDIUM');
+  const [editPriority, setEditPriority] = useState<TaskPriority>('MEDIUM');
 
   // Drag and drop
   const [draggedTask, setDraggedTask] = useState<Task | null>(null);
@@ -163,12 +125,6 @@ export default function BoardPage() {
       });
     },
   });
-
-  useEffect(() => {
-    if (!authLoading && !user) {
-      router.push('/auth/login');
-    }
-  }, [user, authLoading, router]);
 
   // Focus on input when adding column
   useEffect(() => {
@@ -371,7 +327,7 @@ export default function BoardPage() {
               <section
                 key={column.id}
                 aria-label={`Column: ${column.name}`}
-                className={`flex w-68 shrink-0 flex-col rounded-xl bg-muted/50 transition-shadow duration-100 ${
+                className={`flex w-68 shrink-0 flex-col rounded-xl bg-muted/50 ${
                   dragOverColumn === column.id
                     ? 'ring-2 ring-primary/50'
                     : ''
@@ -398,13 +354,13 @@ export default function BoardPage() {
                         key={task.id}
                         draggable
                         onDragStart={() => handleDragStart(task)}
-                        className={`group relative cursor-grab rounded-lg border bg-card p-3 shadow-sm transition-shadow duration-150 hover:shadow-md hover:border-primary/30 active:cursor-grabbing ${
+                        className={`group relative cursor-grab rounded-lg border bg-card p-3 shadow-sm hover:shadow-md hover:border-primary/30 active:cursor-grabbing ${
                           draggedTask?.id === task.id ? 'opacity-40' : ''
                         }`}
                       >
                         {/* Priority bar */}
                         <div
-                          className={`absolute left-0 top-0 bottom-0 w-1 rounded-l-lg ${priorityColor[task.priority]}`}
+                          className={`absolute left-0 top-0 bottom-0 w-1 rounded-l-lg ${PRIORITY_CONFIG[task.priority].color}`}
                         />
 
                         <div className="pl-2">
@@ -448,9 +404,9 @@ export default function BoardPage() {
                               className="h-5 text-[10px] gap-0.5"
                             >
                               <div
-                                className={`h-1.5 w-1.5 rounded-full ${priorityColor[task.priority]}`}
+                                className={`h-1.5 w-1.5 rounded-full ${PRIORITY_CONFIG[task.priority].color}`}
                               />
-                              {priorityLabel[task.priority]}
+                              {PRIORITY_CONFIG[task.priority].label}
                             </Badge>
                             {task.dueDate && (
                               <span className="flex items-center gap-0.5 text-[10px] text-muted-foreground">
@@ -603,7 +559,7 @@ export default function BoardPage() {
                 <Label>Priority</Label>
                 <Select
                   value={editPriority}
-                  onValueChange={(v) => setEditPriority(v as Priority)}
+                  onValueChange={(v) => setEditPriority(v as TaskPriority)}
                 >
                   <SelectTrigger>
                     <SelectValue />

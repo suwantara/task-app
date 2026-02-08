@@ -1,12 +1,13 @@
 'use client';
 
-import { useEffect, useState, useMemo } from 'react';
-import { useAuth } from '@/contexts/auth-context';
+import { useState, useMemo } from 'react';
+import { useAuthGuard } from '@/hooks/use-auth-guard';
 import { useWorkspace } from '@/contexts/workspace-context';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { format } from 'date-fns';
-import { apiClient } from '@/lib/api';
+import { apiClient, PRIORITY_CONFIG } from '@/lib/api';
+import type { TaskPriority, Task, Column, WorkspaceMember } from '@/lib/api';
 import { useAllWorkspaceTasks, useWorkspaceMembers, queryKeys } from '@/hooks/use-queries';
 import { useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/button';
@@ -59,64 +60,18 @@ import {
   User,
 } from 'lucide-react';
 
-type Priority = 'LOW' | 'MEDIUM' | 'HIGH';
-
-interface Column {
-  id: string;
-  boardId: string;
-  name: string;
-  position: number;
-}
-
-interface Member {
-  id: string;
-  userId: string;
-  user: {
-    id: string;
-    name: string;
-    email: string;
-    avatarUrl?: string;
-  };
-}
-
-interface Task {
-  id: string;
-  title: string;
-  description?: string;
-  priority: Priority;
-  columnId: string;
-  boardId: string;
-  workspaceId: string;
-  position: number;
-  dueDate?: string;
-  assigneeId?: string;
-  assignee?: {
-    id: string;
-    name: string;
-    avatarUrl?: string;
-  };
-  createdAt: string;
-  updatedAt: string;
-}
-
 interface TaskRow extends Task {
   boardName: string;
   columnName: string;
   completed: boolean;
-  columns: Column[]; // Available columns for this board
+  columns: Column[];
 }
-
-const priorityConfig: Record<Priority, { label: string; color: string }> = {
-  HIGH: { label: 'High', color: 'bg-red-500' },
-  MEDIUM: { label: 'Medium', color: 'bg-amber-500' },
-  LOW: { label: 'Low', color: 'bg-emerald-500' },
-};
 
 type SortField = 'title' | 'priority' | 'dueDate' | 'boardName' | 'columnName' | 'createdAt';
 type SortDir = 'asc' | 'desc';
 
 export default function TasksTablePage() {
-  const { user, loading: authLoading } = useAuth();
+  const { user, loading: authLoading } = useAuthGuard();
   const router = useRouter();
   const { activeWorkspace } = useWorkspace();
   const workspaceId = activeWorkspace?.id ?? '';
@@ -127,7 +82,7 @@ export default function TasksTablePage() {
   const { data: membersData = [] } = useWorkspaceMembers(workspaceId);
 
   const boards = allTasksData?.boards ?? [];
-  const members = membersData as Member[];
+  const members = membersData as WorkspaceMember[];
 
   const [completedTasks, setCompletedTasks] = useState<Set<string>>(new Set());
 
@@ -143,13 +98,7 @@ export default function TasksTablePage() {
   const [editingTask, setEditingTask] = useState<TaskRow | null>(null);
   const [editTitle, setEditTitle] = useState('');
   const [editDescription, setEditDescription] = useState('');
-  const [editPriority, setEditPriority] = useState<Priority>('MEDIUM');
-
-  useEffect(() => {
-    if (!authLoading && !user) {
-      router.push('/auth/login');
-    }
-  }, [user, authLoading, router]);
+  const [editPriority, setEditPriority] = useState<TaskPriority>('MEDIUM');
 
   // Derive tasks from React Query data
   const tasks: TaskRow[] = useMemo(() => {
@@ -441,7 +390,7 @@ export default function TasksTablePage() {
                     <TableCell>
                       <div className="flex items-center gap-2">
                         <div
-                          className={`h-2 w-2 rounded-full ${priorityConfig[task.priority].color}`}
+                          className={`h-2 w-2 rounded-full ${PRIORITY_CONFIG[task.priority].color}`}
                         />
                         <span
                           className={
@@ -542,9 +491,9 @@ export default function TasksTablePage() {
                         className="text-xs gap-1"
                       >
                         <div
-                          className={`h-1.5 w-1.5 rounded-full ${priorityConfig[task.priority].color}`}
+                          className={`h-1.5 w-1.5 rounded-full ${PRIORITY_CONFIG[task.priority].color}`}
                         />
-                        {priorityConfig[task.priority].label}
+                        {PRIORITY_CONFIG[task.priority].label}
                       </Badge>
                     </TableCell>
                     {/* Due Date */}
@@ -650,7 +599,7 @@ export default function TasksTablePage() {
               <Label>Priority</Label>
               <Select
                 value={editPriority}
-                onValueChange={(v) => setEditPriority(v as Priority)}
+                onValueChange={(v) => setEditPriority(v as TaskPriority)}
               >
                 <SelectTrigger>
                   <SelectValue />

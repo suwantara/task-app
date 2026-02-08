@@ -4,7 +4,15 @@ import {
   ForbiddenException,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { WorkspaceMember } from '@prisma/client'; // Assuming WorkspaceMember is a Prisma client type
+import { WorkspaceMember } from '@prisma/client';
+
+const ERR = {
+  NOT_MEMBER: 'Access denied: You are not a member of this workspace',
+  BOARD_NOT_FOUND: 'Board not found',
+  COLUMN_NOT_FOUND: 'Column not found',
+  TASK_NOT_FOUND: 'Task not found',
+  NOTE_NOT_FOUND: 'Note not found',
+} as const;
 
 @Injectable()
 export class PermissionsService {
@@ -24,9 +32,7 @@ export class PermissionsService {
     });
 
     if (!member) {
-      throw new ForbiddenException(
-        'Access denied: You are not a member of this workspace',
-      );
+      throw new ForbiddenException(ERR.NOT_MEMBER);
     }
 
     return member;
@@ -55,14 +61,12 @@ export class PermissionsService {
     });
 
     if (!board) {
-      throw new NotFoundException('Board not found');
+      throw new NotFoundException(ERR.BOARD_NOT_FOUND);
     }
 
     const member = board.workspace.members[0];
     if (!member) {
-      throw new ForbiddenException(
-        'Access denied: You are not a member of this workspace',
-      );
+      throw new ForbiddenException(ERR.NOT_MEMBER);
     }
 
     return member;
@@ -96,14 +100,12 @@ export class PermissionsService {
     });
 
     if (!column) {
-      throw new NotFoundException('Column not found');
+      throw new NotFoundException(ERR.COLUMN_NOT_FOUND);
     }
 
     const member = column.board.workspace.members[0];
     if (!member) {
-      throw new ForbiddenException(
-        'Access denied: You are not a member of this workspace',
-      );
+      throw new ForbiddenException(ERR.NOT_MEMBER);
     }
 
     return { member, boardId: column.boardId };
@@ -133,13 +135,11 @@ export class PermissionsService {
     });
 
     if (!task) {
-      throw new NotFoundException('Task not found');
+      throw new NotFoundException(ERR.TASK_NOT_FOUND);
     }
 
     if (!task.workspace.members[0]) {
-      throw new ForbiddenException(
-        'Access denied: You are not a member of this workspace',
-      );
+      throw new ForbiddenException(ERR.NOT_MEMBER);
     }
 
     return { workspaceId: task.workspaceId, boardId: task.boardId };
@@ -159,7 +159,7 @@ export class PermissionsService {
     });
 
     if (!column) {
-      throw new NotFoundException('Column not found');
+      throw new NotFoundException(ERR.COLUMN_NOT_FOUND);
     }
 
     if (column.boardId !== boardId) {
@@ -167,6 +167,39 @@ export class PermissionsService {
         'Invalid operation: Column does not belong to the task board',
       );
     }
+  }
+
+  /**
+   * Single-query note access check — fetches note + verifies membership in one round-trip.
+   */
+  async validateNoteAccess(
+    userId: string,
+    noteId: string,
+  ): Promise<{ workspaceId: string }> {
+    const note = await this.prisma.note.findUnique({
+      where: { id: noteId },
+      select: {
+        workspaceId: true,
+        workspace: {
+          select: {
+            members: {
+              where: { userId },
+              take: 1,
+            },
+          },
+        },
+      },
+    });
+
+    if (!note) {
+      throw new NotFoundException(ERR.NOTE_NOT_FOUND);
+    }
+
+    if (!note.workspace.members[0]) {
+      throw new ForbiddenException(ERR.NOT_MEMBER);
+    }
+
+    return { workspaceId: note.workspaceId };
   }
 
   /**

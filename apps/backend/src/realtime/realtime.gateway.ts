@@ -139,11 +139,11 @@ export class RealtimeGateway
     const userJson = raw[client.id];
     if (userJson) {
       const user: PresenceUser = JSON.parse(userJson);
-      user.cursor = data.cursor;
+      const updated = { ...user, cursor: data.cursor };
       await this.cache.hset(
         `presence:${data.room}`,
         client.id,
-        JSON.stringify(user),
+        JSON.stringify(updated),
       );
       // Broadcast to others in the room
       client.to(data.room).emit('cursor:update', {
@@ -232,11 +232,11 @@ export class RealtimeGateway
     const userJson = raw[client.id];
     if (userJson) {
       const user: PresenceUser = JSON.parse(userJson);
-      user.currentPage = data.page;
+      const updated = { ...user, currentPage: data.page };
       await this.cache.hset(
         `presence:${data.room}`,
         client.id,
-        JSON.stringify(user),
+        JSON.stringify(updated),
       );
       // Broadcast updated presence list
       const users = await this.getPresenceUsers(data.room);

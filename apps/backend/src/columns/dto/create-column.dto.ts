@@ -9,13 +9,13 @@ import {
 export class CreateColumnDto {
   @IsNotEmpty()
   @IsString()
-  name: string;
+  readonly name: string;
 
   @IsNotEmpty()
   @IsUUID()
-  boardId: string;
+  readonly boardId: string;
 
   @IsOptional()
   @IsNumber()
-  order?: number;
+  readonly order?: number;
 }

@@ -2,10 +2,11 @@
 
 import { useEffect, useCallback } from 'react';
 import { useSocket } from '@/contexts/socket-context';
+import type { Task, Column, Note } from '@/lib/api';
 
 interface RealtimeCallbacks {
-  onTaskCreated?: (task: unknown) => void;
-  onTaskUpdated?: (task: unknown) => void;
+  onTaskCreated?: (task: Task) => void;
+  onTaskUpdated?: (task: Task) => void;
   onTaskDeleted?: (data: { id: string }) => void;
   onTaskMoved?: (data: {
     taskId: string;
@@ -13,8 +14,8 @@ interface RealtimeCallbacks {
     toColumnId: string;
     position: number;
   }) => void;
-  onColumnCreated?: (column: unknown) => void;
-  onColumnUpdated?: (column: unknown) => void;
+  onColumnCreated?: (column: Column) => void;
+  onColumnUpdated?: (column: Column) => void;
   onCursorUpdate?: (data: {
     socketId: string;
     userId: string;
@@ -38,7 +39,8 @@ export function useBoardRealtime(boardId: string | null, callbacks: RealtimeCall
   useEffect(() => {
     if (!socket) return;
 
-    const handlers: [string, (...args: unknown[]) => void][] = [];
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const handlers: [string, (...args: any[]) => void][] = [];
 
     if (callbacks.onTaskCreated) {
       const h = callbacks.onTaskCreated;
@@ -51,12 +53,12 @@ export function useBoardRealtime(boardId: string | null, callbacks: RealtimeCall
       handlers.push(['task:updated', h]);
     }
     if (callbacks.onTaskDeleted) {
-      const h = callbacks.onTaskDeleted as (...args: unknown[]) => void;
+      const h = callbacks.onTaskDeleted;
       socket.on('task:deleted', h);
       handlers.push(['task:deleted', h]);
     }
     if (callbacks.onTaskMoved) {
-      const h = callbacks.onTaskMoved as (...args: unknown[]) => void;
+      const h = callbacks.onTaskMoved;
       socket.on('task:moved', h);
       handlers.push(['task:moved', h]);
     }
@@ -71,7 +73,7 @@ export function useBoardRealtime(boardId: string | null, callbacks: RealtimeCall
       handlers.push(['column:updated', h]);
     }
     if (callbacks.onCursorUpdate) {
-      const h = callbacks.onCursorUpdate as (...args: unknown[]) => void;
+      const h = callbacks.onCursorUpdate;
       socket.on('cursor:update', h);
       handlers.push(['cursor:update', h]);
     }
@@ -104,8 +106,8 @@ export function useBoardRealtime(boardId: string | null, callbacks: RealtimeCall
 export function useNoteRealtime(
   workspaceId: string | null,
   callbacks: {
-    onNoteCreated?: (note: unknown) => void;
-    onNoteUpdated?: (note: unknown) => void;
+    onNoteCreated?: (note: Note) => void;
+    onNoteUpdated?: (note: Note) => void;
     onNoteDeleted?: (data: { id: string }) => void;
   },
 ) {
@@ -123,7 +125,8 @@ export function useNoteRealtime(
   useEffect(() => {
     if (!socket) return;
 
-    const handlers: [string, (...args: unknown[]) => void][] = [];
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const handlers: [string, (...args: any[]) => void][] = [];
 
     if (callbacks.onNoteCreated) {
       const h = callbacks.onNoteCreated;
@@ -138,7 +141,7 @@ export function useNoteRealtime(
     }
 
     if (callbacks.onNoteDeleted) {
-      const h = callbacks.onNoteDeleted as (...args: unknown[]) => void;
+      const h = callbacks.onNoteDeleted;
       socket.on('note:deleted', h);
       handlers.push(['note:deleted', h]);
     }

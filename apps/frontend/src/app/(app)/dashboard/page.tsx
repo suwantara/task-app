@@ -1,10 +1,11 @@
 'use client';
 
 import { useState } from 'react';
-import { useAuth } from '@/contexts/auth-context';
-import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import { useAuthGuard } from '@/hooks/use-auth-guard';
+import { PageLoading } from '@/components/page-loading';
 import { useWorkspaces, useCreateWorkspace } from '@/hooks/use-queries';
+import type { Workspace } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -20,17 +21,11 @@ import {
 import { Plus } from 'lucide-react';
 
 export default function DashboardPage() {
-  const { user, loading: authLoading } = useAuth();
-  const router = useRouter();
-  const { data: workspaces = [], isLoading } = useWorkspaces({ enabled: !!user }) as { data: { id: string; name: string; createdAt: string }[]; isLoading: boolean };
+  const { user, loading: authLoading } = useAuthGuard();
+  const { data: workspaces = [], isLoading } = useWorkspaces({ enabled: !!user });
   const createWorkspace = useCreateWorkspace();
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [newWorkspaceName, setNewWorkspaceName] = useState('');
-
-  if (!authLoading && !user) {
-    router.push('/auth/login');
-    return null;
-  }
 
   const handleCreateWorkspace = async (e: React.BaseSyntheticEvent) => {
     e.preventDefault();
@@ -42,11 +37,7 @@ export default function DashboardPage() {
   };
 
   if (authLoading || isLoading) {
-    return (
-      <div className="flex items-center justify-center p-12">
-        <div className="text-lg text-muted-foreground">Loading...</div>
-      </div>
-    );
+    return <PageLoading />;
   }
 
   return (
@@ -60,7 +51,7 @@ export default function DashboardPage() {
       </div>
 
       <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-          {(workspaces as { id: string; name: string; createdAt: string }[]).map((workspace) => (
+          {(workspaces as Workspace[]).map((workspace) => (
             <Link key={workspace.id} href={`/workspace/${workspace.id}`}>
               <Card className="hover:shadow-lg transition-shadow cursor-pointer">
                 <CardHeader>
