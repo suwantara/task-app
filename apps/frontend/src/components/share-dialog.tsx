@@ -10,7 +10,6 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
   Select,
@@ -25,7 +24,6 @@ import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import {
   Copy,
   Check,
-  Link2,
   Trash2,
   Crown,
   Pencil,
@@ -35,6 +33,7 @@ import {
   RefreshCw,
   Hash,
 } from 'lucide-react';
+
 
 interface InviteLink {
   id: string;
@@ -83,8 +82,6 @@ export function ShareDialog({
   const [joinCodes, setJoinCodes] = useState<{ editorJoinCode: string; viewerJoinCode: string } | null>(null);
   const [loading, setLoading] = useState(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
-  const [newLinkRole, setNewLinkRole] = useState<string>('EDITOR');
-  const [creatingLink, setCreatingLink] = useState(false);
   const [regeneratingCode, setRegeneratingCode] = useState<string | null>(null);
 
   const loadData = useCallback(async () => {
@@ -111,18 +108,6 @@ export function ShareDialog({
       loadData();
     }
   }, [open, loadData]);
-
-  const handleCreateLink = async () => {
-    setCreatingLink(true);
-    try {
-      await apiClient.createInviteLink(workspaceId, { role: newLinkRole });
-      await loadData();
-    } catch (error) {
-      console.error('Failed to create invite link:', error);
-    } finally {
-      setCreatingLink(false);
-    }
-  };
 
   const handleCopyLink = async (token: string, linkId: string) => {
     const url = `${globalThis.location.origin}/join/${token}`;
@@ -304,41 +289,44 @@ export function ShareDialog({
             )}
           </TabsContent>
 
-          {/* Invite Links Tab */}
+          {/* Join Codes Tab */}
           <TabsContent value="links" className="space-y-4">
-            {/* Quick Join Codes (owner only) */}
-            {isOwner && joinCodes && (
-              <div className="space-y-3 rounded-lg border bg-muted/30 p-4">
-                <div className="flex items-center gap-2">
-                  <Hash className="size-4 text-muted-foreground" />
-                  <Label className="text-sm font-medium">Quick Join Codes</Label>
+            {/* Join Codes Section - Primary */}
+            {isOwner && joinCodes ? (
+              <div className="space-y-4">
+                <div className="space-y-1">
+                  <Label className="text-sm font-medium flex items-center gap-2">
+                    <Hash className="size-4 text-muted-foreground" />
+                    Join Codes
+                  </Label>
+                  <p className="text-xs text-muted-foreground">
+                    Share these 6-character codes for quick access
+                  </p>
                 </div>
-                <p className="text-xs text-muted-foreground">
-                  Share these 6-character codes for easy joining
-                </p>
-                <div className="grid gap-3">
-                  {/* Editor Code */}
-                  <div className="flex items-center justify-between rounded-md border bg-background px-3 py-2">
-                    <div className="flex items-center gap-3">
-                      <Badge variant="secondary" className="gap-1">
-                        <Pencil className="size-3" />
-                        Editor
-                      </Badge>
-                      <code className="font-mono text-lg font-bold tracking-widest">
-                        {joinCodes.editorJoinCode}
-                      </code>
-                    </div>
+                
+                {/* Editor Code */}
+                <div className="rounded-lg border bg-gradient-to-br from-blue-500/5 to-indigo-500/10 p-4 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <Badge variant="secondary" className="gap-1 bg-blue-500/10 text-blue-600 border-blue-500/20">
+                      <Pencil className="size-3" />
+                      Editor
+                    </Badge>
+                    <span className="text-xs text-muted-foreground">Can edit tasks & boards</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <code className="font-mono text-2xl font-bold tracking-[0.3em]">
+                      {joinCodes.editorJoinCode}
+                    </code>
                     <div className="flex gap-1">
                       <Button
-                        size="icon"
-                        variant="ghost"
-                        className="size-8"
+                        size="sm"
+                        variant="outline"
                         onClick={() => handleCopyCode(joinCodes.editorJoinCode, 'editor')}
                       >
                         {copiedId === 'editor' ? (
-                          <Check className="size-4 text-green-500" />
+                          <><Check className="size-3.5 mr-1.5 text-green-500" /> Copied</>
                         ) : (
-                          <Copy className="size-4" />
+                          <><Copy className="size-3.5 mr-1.5" /> Copy Code</>
                         )}
                       </Button>
                       <Button
@@ -352,28 +340,31 @@ export function ShareDialog({
                       </Button>
                     </div>
                   </div>
-                  {/* Viewer Code */}
-                  <div className="flex items-center justify-between rounded-md border bg-background px-3 py-2">
-                    <div className="flex items-center gap-3">
-                      <Badge variant="outline" className="gap-1">
-                        <Eye className="size-3" />
-                        Viewer
-                      </Badge>
-                      <code className="font-mono text-lg font-bold tracking-widest">
-                        {joinCodes.viewerJoinCode}
-                      </code>
-                    </div>
+                </div>
+
+                {/* Viewer Code */}
+                <div className="rounded-lg border bg-gradient-to-br from-slate-500/5 to-gray-500/10 p-4 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <Badge variant="outline" className="gap-1">
+                      <Eye className="size-3" />
+                      Viewer
+                    </Badge>
+                    <span className="text-xs text-muted-foreground">View only access</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <code className="font-mono text-2xl font-bold tracking-[0.3em]">
+                      {joinCodes.viewerJoinCode}
+                    </code>
                     <div className="flex gap-1">
                       <Button
-                        size="icon"
-                        variant="ghost"
-                        className="size-8"
+                        size="sm"
+                        variant="outline"
                         onClick={() => handleCopyCode(joinCodes.viewerJoinCode, 'viewer')}
                       >
                         {copiedId === 'viewer' ? (
-                          <Check className="size-4 text-green-500" />
+                          <><Check className="size-3.5 mr-1.5 text-green-500" /> Copied</>
                         ) : (
-                          <Copy className="size-4" />
+                          <><Copy className="size-3.5 mr-1.5" /> Copy Code</>
                         )}
                       </Button>
                       <Button
@@ -388,105 +379,72 @@ export function ShareDialog({
                     </div>
                   </div>
                 </div>
-              </div>
-            )}
 
-            {/* Create new link */}
-            <div className="space-y-2">
-              <Label className="text-sm font-medium">Create invite link</Label>
-              <div className="flex gap-2">
-                <Select value={newLinkRole} onValueChange={setNewLinkRole}>
-                  <SelectTrigger className="w-32">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="EDITOR">Editor</SelectItem>
-                    <SelectItem value="VIEWER">Viewer</SelectItem>
-                  </SelectContent>
-                </Select>
-                <Button
-                  onClick={handleCreateLink}
-                  disabled={creatingLink}
-                  className="flex-1"
-                >
-                  {creatingLink ? (
-                    <Loader2 className="mr-2 size-4 animate-spin" />
-                  ) : (
-                    <Link2 className="mr-2 size-4" />
-                  )}
-                  Generate Link
-                </Button>
-              </div>
-            </div>
-
-            {/* Existing links */}
-            <div className="max-h-52 space-y-2 overflow-y-auto">
-              {inviteLinks.length === 0 ? (
-                <p className="py-4 text-center text-sm text-muted-foreground">
-                  No invite links created yet
-                </p>
-              ) : (
-                inviteLinks.map((link) => (
-                  <div
-                    key={link.id}
-                    className={`flex items-center gap-2 rounded-lg border p-2.5 ${
-                      link.isActive ? '' : 'opacity-50'
-                    }`}
-                  >
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-2">
-                        <Badge
-                          variant={getRoleBadgeVariant(link.role)}
-                          className="gap-1 text-[10px]"
+                {/* Link generation - collapsed by default */}
+                {inviteLinks.length > 0 && (
+                  <div className="pt-2 border-t space-y-2">
+                    <Label className="text-xs text-muted-foreground">Legacy Invite Links</Label>
+                    <div className="max-h-32 space-y-2 overflow-y-auto">
+                      {inviteLinks.map((link) => (
+                        <div
+                          key={link.id}
+                          className={`flex items-center gap-2 rounded-md border p-2 text-xs ${
+                            link.isActive ? '' : 'opacity-50'
+                          }`}
                         >
-                          {getRoleIcon(link.role)}
-                          {link.role}
-                        </Badge>
-                        {!link.isActive && (
-                          <Badge variant="destructive" className="text-[10px]">
-                            Revoked
+                          <Badge
+                            variant={getRoleBadgeVariant(link.role)}
+                            className="gap-1 text-[10px]"
+                          >
+                            {getRoleIcon(link.role)}
+                            {link.role}
                           </Badge>
-                        )}
-                        <span className="text-[10px] text-muted-foreground">
-                          {link.useCount} use{link.useCount === 1 ? '' : 's'}
-                          {link.maxUses ? ` / ${link.maxUses}` : ''}
-                        </span>
-                      </div>
-                      <Input
-                        readOnly
-                        value={`${typeof globalThis !== 'undefined' && globalThis.location ? globalThis.location.origin : ''}/join/${link.token}`}
-                        className="mt-1.5 h-7 text-xs"
-                      />
-                    </div>
-                    <div className="flex flex-col gap-1">
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="size-7"
-                        onClick={() => handleCopyLink(link.token, link.id)}
-                        disabled={!link.isActive}
-                      >
-                        {copiedId === link.id ? (
-                          <Check className="size-3.5 text-green-500" />
-                        ) : (
-                          <Copy className="size-3.5" />
-                        )}
-                      </Button>
-                      {link.isActive && (
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="size-7 text-destructive hover:text-destructive"
-                          onClick={() => handleRevokeLink(link.id)}
-                        >
-                          <Trash2 className="size-3.5" />
-                        </Button>
-                      )}
+                          {!link.isActive && (
+                            <Badge variant="destructive" className="text-[10px]">
+                              Revoked
+                            </Badge>
+                          )}
+                          <span className="text-[10px] text-muted-foreground flex-1">
+                            {link.useCount} use{link.useCount === 1 ? '' : 's'}
+                          </span>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="size-6"
+                            onClick={() => handleCopyLink(link.token, link.id)}
+                            disabled={!link.isActive}
+                          >
+                            {copiedId === link.id ? (
+                              <Check className="size-3 text-green-500" />
+                            ) : (
+                              <Copy className="size-3" />
+                            )}
+                          </Button>
+                          {link.isActive && (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="size-6 text-destructive hover:text-destructive"
+                              onClick={() => handleRevokeLink(link.id)}
+                            >
+                              <Trash2 className="size-3" />
+                            </Button>
+                          )}
+                        </div>
+                      ))}
                     </div>
                   </div>
-                ))
-              )}
-            </div>
+                )}
+              </div>
+            ) : (
+              <div className="py-8 text-center text-sm text-muted-foreground">
+                {loading ? (
+                  <Loader2 className="size-5 animate-spin mx-auto" />
+                ) : (
+                  'Only workspace owners can view join codes'
+                )}
+              </div>
+            )}
           </TabsContent>
         </Tabs>
       </DialogContent>

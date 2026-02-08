@@ -5,7 +5,7 @@ import { useParams } from 'next/navigation';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -16,10 +16,17 @@ import {
   DropdownMenuRadioGroup,
   DropdownMenuRadioItem,
 } from '@/components/ui/dropdown-menu';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
-import { Copy, RefreshCw, Trash2, Users, Shield, Eye, Pencil, MoreHorizontal } from 'lucide-react';
+import { Copy, RefreshCw, Trash2, Users, Shield, Eye, Pencil, MoreHorizontal, Link, UserPlus, Crown } from 'lucide-react';
 
 interface Member {
   id: string;
@@ -170,103 +177,183 @@ export default function WorkspaceMembersPage() {
     toast.success('Copied!', { description: `${role} code copied to clipboard` });
   };
 
+  const copyInviteLink = (code: string, role: string) => {
+    const link = `${window.location.origin}/join/${code}`;
+    navigator.clipboard.writeText(link);
+    toast.success('Link Copied!', { description: `${role} invite link copied` });
+  };
+
   const getRoleBadge = (role: string) => {
     switch (role) {
       case 'OWNER':
-        return <Badge className="bg-amber-500"><Shield className="h-3 w-3 mr-1" /> Owner</Badge>;
+        return (
+          <Badge className="bg-gradient-to-r from-amber-500 to-orange-500 text-white border-0 shadow-sm">
+            <Crown className="h-3 w-3 mr-1" /> Owner
+          </Badge>
+        );
       case 'EDITOR':
-        return <Badge className="bg-blue-500"><Pencil className="h-3 w-3 mr-1" /> Editor</Badge>;
+        return (
+          <Badge className="bg-gradient-to-r from-blue-500 to-indigo-500 text-white border-0 shadow-sm">
+            <Pencil className="h-3 w-3 mr-1" /> Editor
+          </Badge>
+        );
       case 'VIEWER':
-        return <Badge variant="secondary"><Eye className="h-3 w-3 mr-1" /> Viewer</Badge>;
+        return (
+          <Badge variant="secondary" className="shadow-sm">
+            <Eye className="h-3 w-3 mr-1" /> Viewer
+          </Badge>
+        );
       default:
         return <Badge>{role}</Badge>;
     }
+  };
+
+  const getAvatarColor = (name: string) => {
+    const colors = [
+      'bg-gradient-to-br from-pink-500 to-rose-500',
+      'bg-gradient-to-br from-violet-500 to-purple-500',
+      'bg-gradient-to-br from-blue-500 to-cyan-500',
+      'bg-gradient-to-br from-emerald-500 to-teal-500',
+      'bg-gradient-to-br from-amber-500 to-orange-500',
+    ];
+    const index = name.charCodeAt(0) % colors.length;
+    return colors[index];
   };
 
   const currentUserId = globalThis.window ? localStorage.getItem('userId') : null;
   const isOwner = workspace?.ownerId === currentUserId;
 
   if (loadingMembers) {
-    return <div className="p-8 text-center">Loading...</div>;
+    return (
+      <div className="flex items-center justify-center h-[50vh]">
+        <div className="flex flex-col items-center gap-3">
+          <div className="animate-spin rounded-full h-8 w-8 border-2 border-primary border-t-transparent" />
+          <p className="text-muted-foreground text-sm">Loading members...</p>
+        </div>
+      </div>
+    );
   }
 
   return (
     <div className="container max-w-4xl py-8 space-y-8">
-      <div>
-        <h1 className="text-3xl font-bold flex items-center gap-2">
-          <Users className="h-8 w-8" />
-          {workspace?.name} - Members
-        </h1>
-        <p className="text-muted-foreground mt-2">
-          Manage workspace members and permissions
-        </p>
+      {/* Header */}
+      <div className="space-y-2">
+        <div className="flex items-center gap-3">
+          <div className="p-2 rounded-lg bg-gradient-to-br from-primary/20 to-primary/5 border">
+            <Users className="h-6 w-6 text-primary" />
+          </div>
+          <div>
+            <h1 className="text-2xl font-bold tracking-tight">
+              {workspace?.name} - Members
+            </h1>
+            <p className="text-muted-foreground text-sm">
+              Manage workspace members and permissions
+            </p>
+          </div>
+        </div>
       </div>
 
       {/* Join Codes Section - Only visible to owner */}
       {joinCodes && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-lg">Join Codes</CardTitle>
+        <Card className="border-dashed">
+          <CardHeader className="pb-4">
+            <CardTitle className="text-lg flex items-center gap-2">
+              <UserPlus className="h-5 w-5 text-muted-foreground" />
+              Invite Members
+            </CardTitle>
+            <CardDescription>
+              Share these codes or links to invite people to your workspace
+            </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="grid gap-4 md:grid-cols-2">
               {/* Editor Code */}
-              <div className="p-4 rounded-lg border bg-blue-50 dark:bg-blue-950/20">
-                <div className="flex items-center justify-between mb-2">
-                  <span className="font-medium flex items-center gap-2">
-                    <Pencil className="h-4 w-4" /> Editor Code
-                  </span>
-                  <Badge className="bg-blue-500">Can Edit</Badge>
-                </div>
-                <div className="flex items-center gap-2">
-                  <code className="text-2xl font-mono tracking-widest flex-1">
+              <div className="group relative overflow-hidden rounded-xl border bg-gradient-to-br from-blue-500/5 to-indigo-500/10 p-5 transition-all hover:shadow-md hover:border-blue-500/30">
+                <div className="absolute inset-0 bg-gradient-to-br from-blue-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+                <div className="relative space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="font-medium flex items-center gap-2 text-sm">
+                      <Pencil className="h-4 w-4 text-blue-500" /> Editor Access
+                    </span>
+                    <Badge className="bg-blue-500/10 text-blue-500 border-blue-500/20">
+                      Can Edit
+                    </Badge>
+                  </div>
+                  <code className="block text-3xl font-mono tracking-[0.3em] text-center py-2">
                     {joinCodes.editorJoinCode}
                   </code>
-                  <Button
-                    size="icon"
-                    variant="ghost"
-                    onClick={() => copyCode(joinCodes.editorJoinCode, 'Editor')}
-                  >
-                    <Copy className="h-4 w-4" />
-                  </Button>
-                  <Button
-                    size="icon"
-                    variant="ghost"
-                    onClick={() => handleRegenerateCode('EDITOR')}
-                    disabled={regenerating === 'EDITOR'}
-                  >
-                    <RefreshCw className={`h-4 w-4 ${regenerating === 'EDITOR' ? 'animate-spin' : ''}`} />
-                  </Button>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="flex-1"
+                      onClick={() => copyCode(joinCodes.editorJoinCode, 'Editor')}
+                    >
+                      <Copy className="h-3.5 w-3.5 mr-1.5" /> Copy Code
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="flex-1"
+                      onClick={() => copyInviteLink(joinCodes.editorJoinCode, 'Editor')}
+                    >
+                      <Link className="h-3.5 w-3.5 mr-1.5" /> Copy Link
+                    </Button>
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      className="shrink-0"
+                      onClick={() => handleRegenerateCode('EDITOR')}
+                      disabled={regenerating === 'EDITOR'}
+                    >
+                      <RefreshCw className={`h-4 w-4 ${regenerating === 'EDITOR' ? 'animate-spin' : ''}`} />
+                    </Button>
+                  </div>
                 </div>
               </div>
 
               {/* Viewer Code */}
-              <div className="p-4 rounded-lg border bg-gray-50 dark:bg-gray-950/20">
-                <div className="flex items-center justify-between mb-2">
-                  <span className="font-medium flex items-center gap-2">
-                    <Eye className="h-4 w-4" /> Viewer Code
-                  </span>
-                  <Badge variant="secondary">View Only</Badge>
-                </div>
-                <div className="flex items-center gap-2">
-                  <code className="text-2xl font-mono tracking-widest flex-1">
+              <div className="group relative overflow-hidden rounded-xl border bg-gradient-to-br from-slate-500/5 to-gray-500/10 p-5 transition-all hover:shadow-md hover:border-slate-500/30">
+                <div className="absolute inset-0 bg-gradient-to-br from-slate-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+                <div className="relative space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="font-medium flex items-center gap-2 text-sm">
+                      <Eye className="h-4 w-4 text-slate-500" /> Viewer Access
+                    </span>
+                    <Badge variant="secondary" className="bg-slate-500/10 text-slate-500 border-slate-500/20">
+                      View Only
+                    </Badge>
+                  </div>
+                  <code className="block text-3xl font-mono tracking-[0.3em] text-center py-2">
                     {joinCodes.viewerJoinCode}
                   </code>
-                  <Button
-                    size="icon"
-                    variant="ghost"
-                    onClick={() => copyCode(joinCodes.viewerJoinCode, 'Viewer')}
-                  >
-                    <Copy className="h-4 w-4" />
-                  </Button>
-                  <Button
-                    size="icon"
-                    variant="ghost"
-                    onClick={() => handleRegenerateCode('VIEWER')}
-                    disabled={regenerating === 'VIEWER'}
-                  >
-                    <RefreshCw className={`h-4 w-4 ${regenerating === 'VIEWER' ? 'animate-spin' : ''}`} />
-                  </Button>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="flex-1"
+                      onClick={() => copyCode(joinCodes.viewerJoinCode, 'Viewer')}
+                    >
+                      <Copy className="h-3.5 w-3.5 mr-1.5" /> Copy Code
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="flex-1"
+                      onClick={() => copyInviteLink(joinCodes.viewerJoinCode, 'Viewer')}
+                    >
+                      <Link className="h-3.5 w-3.5 mr-1.5" /> Copy Link
+                    </Button>
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      className="shrink-0"
+                      onClick={() => handleRegenerateCode('VIEWER')}
+                      disabled={regenerating === 'VIEWER'}
+                    >
+                      <RefreshCw className={`h-4 w-4 ${regenerating === 'VIEWER' ? 'animate-spin' : ''}`} />
+                    </Button>
+                  </div>
                 </div>
               </div>
             </div>
@@ -278,33 +365,66 @@ export default function WorkspaceMembersPage() {
 
       {/* Members List */}
       <Card>
-        <CardHeader>
-          <CardTitle className="text-lg">Members ({members.length})</CardTitle>
+        <CardHeader className="pb-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle className="text-lg flex items-center gap-2">
+                <Shield className="h-5 w-5 text-muted-foreground" />
+                Team Members
+              </CardTitle>
+              <CardDescription>
+                {members.length} member{members.length !== 1 ? 's' : ''} in this workspace
+              </CardDescription>
+            </div>
+          </div>
         </CardHeader>
         <CardContent>
-          <div className="space-y-4">
-            {members.map((member) => (
+          <div className="divide-y rounded-lg border overflow-hidden">
+            {members.map((member, index) => (
               <div
                 key={member.id}
-                className="flex items-center justify-between p-3 rounded-lg border"
+                className={`flex items-center justify-between p-4 transition-colors hover:bg-muted/50 ${
+                  index === 0 ? '' : ''
+                }`}
               >
-                <div className="flex items-center gap-3">
-                  <Avatar>
-                    <AvatarFallback>
+                <div className="flex items-center gap-4">
+                  <Avatar className={`h-11 w-11 ${getAvatarColor(member.user.name)}`}>
+                    <AvatarFallback className="text-white font-medium">
                       {member.user.name?.charAt(0).toUpperCase() || 'U'}
                     </AvatarFallback>
                   </Avatar>
-                  <div>
-                    <p className="font-medium">{member.user.name}</p>
+                  <div className="space-y-0.5">
+                    <p className="font-medium leading-none">{member.user.name}</p>
                     <p className="text-sm text-muted-foreground">{member.user.email}</p>
                   </div>
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-3">
                   {member.role === 'OWNER' ? (
                     getRoleBadge(member.role)
                   ) : isOwner ? (
                     <div className="flex items-center gap-2">
-                      {getRoleBadge(member.role)}
+                      <Select
+                        value={member.role}
+                        onValueChange={(value) =>
+                          updateRoleMutation.mutate({ memberId: member.id, role: value })
+                        }
+                      >
+                        <SelectTrigger className="w-28 h-8">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="EDITOR">
+                            <span className="flex items-center gap-2">
+                              <Pencil className="h-3 w-3" /> Editor
+                            </span>
+                          </SelectItem>
+                          <SelectItem value="VIEWER">
+                            <span className="flex items-center gap-2">
+                              <Eye className="h-3 w-3" /> Viewer
+                            </span>
+                          </SelectItem>
+                        </SelectContent>
+                      </Select>
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
                           <Button variant="ghost" size="icon" className="h-8 w-8">
@@ -312,17 +432,7 @@ export default function WorkspaceMembersPage() {
                           </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
-                          <DropdownMenuLabel>Manage Access</DropdownMenuLabel>
-                          <DropdownMenuSeparator />
-                          <DropdownMenuRadioGroup
-                            value={member.role}
-                            onValueChange={(value) =>
-                              updateRoleMutation.mutate({ memberId: member.id, role: value })
-                            }
-                          >
-                            <DropdownMenuRadioItem value="EDITOR">Editor</DropdownMenuRadioItem>
-                            <DropdownMenuRadioItem value="VIEWER">Viewer</DropdownMenuRadioItem>
-                          </DropdownMenuRadioGroup>
+                          <DropdownMenuLabel>Actions</DropdownMenuLabel>
                           <DropdownMenuSeparator />
                           <DropdownMenuItem
                             className="text-destructive focus:text-destructive"
