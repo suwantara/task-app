@@ -57,6 +57,7 @@ export function useBoard(id: string) {
     queryKey: queryKeys.board(id),
     queryFn: () => apiClient.getBoard(id),
     enabled: !!id,
+    refetchInterval: 10_000,
   });
 }
 
@@ -65,6 +66,7 @@ export function useColumns(boardId: string) {
     queryKey: queryKeys.columns(boardId),
     queryFn: () => apiClient.getColumns(boardId),
     enabled: !!boardId,
+    refetchInterval: 10_000,
   });
 }
 
@@ -73,6 +75,7 @@ export function useTasks(boardId: string) {
     queryKey: queryKeys.tasks(boardId),
     queryFn: () => apiClient.getTasks(boardId),
     enabled: !!boardId,
+    refetchInterval: 10_000,
   });
 }
 

@@ -49,6 +49,7 @@ import {
   Clock,
   AlignLeft,
   Star,
+  RefreshCw,
 } from 'lucide-react';
 
 export default function BoardPage() {
@@ -328,6 +329,14 @@ export default function BoardPage() {
             )}
           </div>
           <div className="flex items-center gap-2">
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button variant="ghost" size="sm" onClick={invalidateBoard}>
+                  <RefreshCw className="h-4 w-4" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Reload board</TooltipContent>
+            </Tooltip>
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button variant="ghost" size="sm">
