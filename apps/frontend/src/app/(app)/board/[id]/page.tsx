@@ -539,7 +539,7 @@ export default function BoardPage() {
 
                 {/* Column color indicator */}
                 {column.color && (
-                  <div className={`mx-3 mt-2 h-0.5 rounded-full ${getColumnColor(column.color)?.dot ?? ''}`} />
+                  <div className={`mx-3 mt-2 mb-1 h-0.5 rounded-full ${getColumnColor(column.color)?.dot ?? ''}`} />
                 )}
 
                 {/* Cards */}
