@@ -411,7 +411,7 @@ export default function NotesPage() {
   }
 
   return (
-    <div className="flex h-[calc(100vh-3rem)]">
+    <div className="flex h-full">
       {/* Sidebar - Note List */}
       <div className="flex w-72 shrink-0 flex-col border-r">
         <div className="flex items-center justify-between border-b px-4 py-3">

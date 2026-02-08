@@ -173,7 +173,7 @@ export default function SettingsPage() {
   ];
 
   return (
-    <div className="flex h-[calc(100vh-3rem)]">
+    <div className="flex h-full">
       {/* Settings Sidebar */}
       <aside className="w-56 shrink-0 border-r p-4">
         <h2 className="mb-4 text-lg font-semibold">Settings</h2>
