@@ -98,6 +98,7 @@ export interface Column {
   readonly boardId: string;
   readonly name: string;
   readonly position: number;
+  readonly color?: string | null;
   readonly createdAt: string;
   readonly updatedAt: string;
 }

@@ -18,4 +18,8 @@ export class CreateColumnDto {
   @IsOptional()
   @IsNumber()
   readonly order?: number;
+
+  @IsOptional()
+  @IsString()
+  readonly color?: string;
 }

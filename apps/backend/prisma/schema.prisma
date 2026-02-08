@@ -150,6 +150,7 @@ model Column {
   boardId   String   @map("board_id")
   name      String
   position  Int
+  color     String?
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 

@@ -165,7 +165,7 @@ class ApiClient {
     });
   }
 
-  async updateColumn(id: string, data: { name?: string; position?: number }) {
+  async updateColumn(id: string, data: { name?: string; position?: number; color?: string | null }) {
     return this.request<Column>(`/columns/${id}`, {
       method: 'PATCH',
       body: JSON.stringify(data),
@@ -411,6 +411,7 @@ export interface Column {
   readonly boardId: string;
   readonly name: string;
   readonly position: number;
+  readonly color?: string | null;
   readonly createdAt: string;
   readonly updatedAt: string;
 }

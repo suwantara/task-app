@@ -50,6 +50,8 @@ import {
   AlignLeft,
   Star,
   RefreshCw,
+  Palette,
+  Check,
 } from 'lucide-react';
 
 export default function BoardPage() {
@@ -57,6 +59,22 @@ export default function BoardPage() {
   const params = useParams();
   const boardId = params.id as string;
   const qc = useQueryClient();
+
+  // 9 column color options
+  const COLUMN_COLORS: readonly { readonly name: string; readonly value: string; readonly bg: string; readonly border: string; readonly dot: string }[] = [
+    { name: 'Red', value: 'red', bg: 'bg-red-500/8', border: 'border-t-red-500', dot: 'bg-red-500' },
+    { name: 'Orange', value: 'orange', bg: 'bg-orange-500/8', border: 'border-t-orange-500', dot: 'bg-orange-500' },
+    { name: 'Yellow', value: 'yellow', bg: 'bg-yellow-500/8', border: 'border-t-yellow-500', dot: 'bg-yellow-500' },
+    { name: 'Green', value: 'green', bg: 'bg-green-500/8', border: 'border-t-green-500', dot: 'bg-green-500' },
+    { name: 'Teal', value: 'teal', bg: 'bg-teal-500/8', border: 'border-t-teal-500', dot: 'bg-teal-500' },
+    { name: 'Blue', value: 'blue', bg: 'bg-blue-500/8', border: 'border-t-blue-500', dot: 'bg-blue-500' },
+    { name: 'Indigo', value: 'indigo', bg: 'bg-indigo-500/8', border: 'border-t-indigo-500', dot: 'bg-indigo-500' },
+    { name: 'Purple', value: 'purple', bg: 'bg-purple-500/8', border: 'border-t-purple-500', dot: 'bg-purple-500' },
+    { name: 'Pink', value: 'pink', bg: 'bg-pink-500/8', border: 'border-t-pink-500', dot: 'bg-pink-500' },
+  ] as const;
+
+  const getColumnColor = (color?: string | null) =>
+    COLUMN_COLORS.find((c) => c.value === color);
 
   // React Query
   const { data: board = null, isLoading: boardLoading } = useBoard(boardId);
@@ -136,6 +154,12 @@ export default function BoardPage() {
         if (old.some((p) => p.id === c.id)) return old;
         return [...old, c].toSorted((a, b) => a.position - b.position);
       });
+    },
+    onColumnUpdated: (column) => {
+      const c = column as Column;
+      qc.setQueryData(queryKeys.columns(boardId), (old: Column[] | undefined) =>
+        old ? old.map((p) => (p.id === c.id ? { ...p, ...c } : p)) : old,
+      );
     },
   });
 
@@ -426,7 +450,7 @@ export default function BoardPage() {
                           <MoreHorizontal className="h-4 w-4" />
                         </button>
                       </PopoverTrigger>
-                      <PopoverContent className="w-40 p-1" align="start">
+                      <PopoverContent className="w-48 p-1" align="start">
                         <button
                           onClick={() => {
                             setRenamingColumnId(column.id);
@@ -438,6 +462,55 @@ export default function BoardPage() {
                           <Pencil className="h-3.5 w-3.5" />
                           Rename
                         </button>
+                        <div className="px-2 py-1.5">
+                          <span className="flex items-center gap-2 text-sm text-muted-foreground mb-2">
+                            <Palette className="h-3.5 w-3.5" />
+                            Color
+                          </span>
+                          <div className="grid grid-cols-5 gap-1.5">
+                            {COLUMN_COLORS.map((c) => (
+                              <button
+                                key={c.value}
+                                onClick={async () => {
+                                  try {
+                                    await apiClient.updateColumn(column.id, { color: c.value });
+                                    qc.setQueryData(queryKeys.columns(boardId), (old: Column[] | undefined) =>
+                                      old ? old.map((col) => col.id === column.id ? { ...col, color: c.value } : col) : old,
+                                    );
+                                  } catch (err) {
+                                    console.error('Failed to update column color:', err);
+                                  }
+                                }}
+                                className="group/color flex h-6 w-6 items-center justify-center rounded-full transition-transform hover:scale-110"
+                                title={c.name}
+                              >
+                                <span className={`h-5 w-5 rounded-full ${c.dot} flex items-center justify-center`}>
+                                  {column.color === c.value && (
+                                    <Check className="h-3 w-3 text-white" />
+                                  )}
+                                </span>
+                              </button>
+                            ))}
+                            <button
+                              onClick={async () => {
+                                try {
+                                  await apiClient.updateColumn(column.id, { color: null });
+                                  qc.setQueryData(queryKeys.columns(boardId), (old: Column[] | undefined) =>
+                                    old ? old.map((col) => col.id === column.id ? { ...col, color: null } : col) : old,
+                                  );
+                                } catch (err) {
+                                  console.error('Failed to remove column color:', err);
+                                }
+                              }}
+                              className="flex h-6 w-6 items-center justify-center rounded-full border border-dashed border-muted-foreground/40 transition-transform hover:scale-110"
+                              title="No color"
+                            >
+                              {!column.color && (
+                                <Check className="h-3 w-3 text-muted-foreground" />
+                              )}
+                            </button>
+                          </div>
+                        </div>
                         <button
                           onClick={async () => {
                             setColumnPopoverId(null);
@@ -464,15 +537,24 @@ export default function BoardPage() {
                   </div>
                 </div>
 
+                {/* Column color indicator */}
+                {column.color && (
+                  <div className={`mx-3 h-0.5 rounded-full ${getColumnColor(column.color)?.dot ?? ''}`} />
+                )}
+
                 {/* Cards */}
                 <ScrollArea className="flex-1 px-2">
                   <div className="space-y-2 p-1">
-                    {columnTasks.map((task) => (
+                    {columnTasks.map((task) => {
+                      const colColor = getColumnColor(column.color);
+                      return (
                       <article
                         key={task.id}
                         draggable
                         onDragStart={() => handleDragStart(task)}
                         className={`group relative cursor-grab rounded-lg border bg-card p-3 shadow-sm hover:shadow-md hover:border-primary/30 active:cursor-grabbing ${
+                          colColor ? `border-t-2 ${colColor.border}` : ''
+                        } ${
                           draggedTask?.id === task.id ? 'opacity-40' : ''
                         }`}
                       >
@@ -535,11 +617,12 @@ export default function BoardPage() {
                           </div>
                         </div>
                       </article>
-                    ))}
+                      );
+                    })}
 
                     {/* Inline add card */}
                     {addingCardColumnId === column.id ? (
-                      <div className="rounded-lg border bg-card p-2 shadow-sm">
+                      <div className="rounded-lg border bg-card p-3 shadow-sm">
                         <Textarea
                           ref={cardInputRef}
                           placeholder="Enter a title for this card…"
@@ -558,7 +641,7 @@ export default function BoardPage() {
                           className="min-h-15 resize-none border-0 p-1 text-sm shadow-none focus-visible:ring-0"
                           rows={2}
                         />
-                        <div className="mt-3 flex items-center gap-1">
+                        <div className="mt-3 flex items-center gap-3">
                           <Button
                             size="sm"
                             className="h-7 text-xs"

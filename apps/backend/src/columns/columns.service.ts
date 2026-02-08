@@ -28,6 +28,7 @@ export class ColumnsService {
         name: createColumnDto.name,
         boardId: createColumnDto.boardId,
         position,
+        color: createColumnDto.color ?? null,
       },
       include: { tasks: true },
     });
