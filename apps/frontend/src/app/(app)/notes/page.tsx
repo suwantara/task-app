@@ -309,9 +309,13 @@ export default function NotesPage() {
       providerRef.current = null;
     }
     // Cleanup previous ydoc
+    // Cleanup previous ydoc
     setYdoc((prevYdoc) => {
       if (prevYdoc) {
-        prevYdoc.destroy();
+        // Delay destruction to allow Editor component to unmount and disconnect gracefully
+        setTimeout(() => {
+          prevYdoc.destroy();
+        }, 100);
       }
       return null;
     });
