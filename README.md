@@ -1,286 +1,249 @@
-# Task Management Application
+# TaskFlow
 
-A full-stack task management application with real-time collaboration features. Built with modern technologies and best practices.
+> Open-source, real-time collaborative task management app built with NestJS, Next.js, PostgreSQL, and Redis.
 
-## 🚀 Features
+![TypeScript](https://img.shields.io/badge/TypeScript-5.x-3178C6?logo=typescript&logoColor=white)
+![NestJS](https://img.shields.io/badge/NestJS-11-E0234E?logo=nestjs&logoColor=white)
+![Next.js](https://img.shields.io/badge/Next.js-15-000000?logo=next.js&logoColor=white)
+![Prisma](https://img.shields.io/badge/Prisma-6-2D3748?logo=prisma&logoColor=white)
+![PostgreSQL](https://img.shields.io/badge/PostgreSQL-15-4169E1?logo=postgresql&logoColor=white)
+![Redis](https://img.shields.io/badge/Redis-7-DC382D?logo=redis&logoColor=white)
+![License](https://img.shields.io/badge/License-MIT-green)
 
-- **User Authentication**: Secure registration and login with JWT
-- **Workspaces**: Organize your work into separate collaborative spaces
-- **Kanban Boards**: Visual project management with drag-and-drop
-- **Task Management**: Create, edit, and organize tasks with priorities
-- **Notes**: Document your work with a built-in note-taking system
-- **Real-time Updates**: WebSocket support for live collaboration
-- **Responsive Design**: Works seamlessly on desktop and mobile devices
+---
 
-## 🏗️ Project Structure
+## Features
 
-This is a monorepo containing:
+- **Workspaces** — organize teams with role-based access (Owner / Editor / Viewer)
+- **Kanban Boards** — drag-and-drop columns & cards with column color coding
+- **Real-time Collaboration** — instant updates via Socket.IO + Redis pub/sub
+- **Rich Notes** — Tiptap editor with autosave and typing indicators
+- **Single-Session Auth** — JWT + Redis session enforcement (one device at a time)
+- **Invite Links** — short-code workspace invitations with role & expiry
+- **Calendar View** — visualize tasks by due date
+- **Presence Indicators** — see who's online in real-time
+- **Dark Mode** — system-aware theme switching
+- **Swagger API Docs** — auto-generated at `/api`
+
+## Tech Stack
+
+| Layer | Technology |
+|-------|-----------|
+| Frontend | Next.js 15, React 19, Tailwind CSS 4, shadcn/ui, React Query v5, Socket.IO Client |
+| Backend | NestJS 11, Prisma 6, Passport JWT, Socket.IO, class-validator |
+| Database | PostgreSQL 15 |
+| Cache & Pub/Sub | Redis 7 (ioredis) |
+| Shared | TypeScript monorepo (npm workspaces), shared-types package |
+| Deploy | Vercel (frontend) + Railway (backend) + Neon (database) + Upstash (Redis) |
+
+## Project Structure
 
 ```
 task-app/
 ├── apps/
-│   ├── backend/          # NestJS backend API
-│   └── frontend/         # Next.js frontend application
+│   ├── backend/           # NestJS REST API + WebSocket gateway
+│   │   ├── prisma/        # Schema & migrations
+│   │   └── src/
+│   │       ├── auth/      # JWT auth, session management
+│   │       ├── boards/    # Board CRUD
+│   │       ├── columns/   # Column CRUD + color
+│   │       ├── tasks/     # Task CRUD + move
+│   │       ├── notes/     # Notes with autosave
+│   │       ├── workspaces/# Workspace + invite links
+│   │       ├── realtime/  # Socket.IO gateway + Redis adapter
+│   │       ├── cache/     # Redis cache service
+│   │       └── common/    # Permissions, decorators
+│   └── frontend/          # Next.js App Router
+│       └── src/
+│           ├── app/       # Pages (board, workspace, notes, etc.)
+│           ├── components/# UI components (shadcn/ui)
+│           ├── contexts/  # Auth, Socket, Theme providers
+│           ├── hooks/     # React Query hooks, realtime hooks
+│           └── lib/       # API client, utilities
 ├── packages/
-│   └── shared-types/     # Shared TypeScript types
-└── docker-compose.yml    # Docker configuration
+│   └── shared-types/      # Shared TypeScript interfaces & enums
+├── docker-compose.yml     # PostgreSQL + Redis for local dev
+├── Dockerfile             # Production backend image
+└── package.json           # Monorepo root (npm workspaces)
 ```
 
-## 🛠️ Tech Stack
-
-### Backend
-- **NestJS**: Progressive Node.js framework
-- **Prisma**: Next-generation ORM
-- **PostgreSQL**: Robust relational database
-- **JWT**: Secure authentication
-- **WebSockets**: Real-time communication
-- **Swagger**: API documentation
-
-### Frontend
-- **Next.js 16**: React framework with App Router
-- **TypeScript**: Type-safe development
-- **Tailwind CSS**: Utility-first styling
-- **Shadcn/UI**: High-quality components
-- **@dnd-kit**: Drag-and-drop functionality
-
-## 🚦 Getting Started
+## Quick Start
 
 ### Prerequisites
 
-- Node.js 18+
-- PostgreSQL 14+
-- npm or yarn
+- **Node.js** >= 20
+- **npm** >= 9
+- **Docker** (for local PostgreSQL + Redis) — or external services
 
-### Quick Start with Docker
+### 1. Clone & install
 
 ```bash
-# Clone the repository
 git clone https://github.com/suwantara/task-app.git
 cd task-app
-
-# Start services with Docker Compose
-docker-compose up -d
-
-# Access the application
-# Frontend: http://localhost:3001
-# Backend API: http://localhost:3000
-# API Docs: http://localhost:3000/api
-```
-
-### Manual Setup
-
-#### 1. Install Dependencies
-
-```bash
-# Install root dependencies
-npm install
-
-# Install backend dependencies
-cd apps/backend
-npm install
-
-# Install frontend dependencies
-cd ../frontend
 npm install
 ```
 
-#### 2. Setup Backend
+### 2. Start infrastructure
+
+```bash
+docker-compose up -d   # PostgreSQL on :5432, Redis on :6380
+```
+
+### 3. Configure environment
+
+```bash
+# Backend
+cp apps/backend/.env.example apps/backend/.env
+# Edit apps/backend/.env — see Environment Variables below
+```
+
+Create `apps/frontend/.env.local`:
+
+```env
+NEXT_PUBLIC_API_URL=http://127.0.0.1:3000
+NEXT_PUBLIC_WS_URL=http://127.0.0.1:3000
+```
+
+### 4. Setup database
 
 ```bash
 cd apps/backend
-
-# Configure environment
-cp .env.example .env
-# Edit .env with your database credentials
-
-# Run migrations
 npx prisma migrate dev
-
-# Start backend server
-npm run start:dev
+cd ../..
 ```
 
-#### 3. Setup Frontend
+### 5. Run development servers
 
 ```bash
-cd apps/frontend
+# Terminal 1 — Backend
+npm run dev:backend
 
-# Configure environment
-cp .env.local.example .env.local
-# Edit .env.local and set NEXT_PUBLIC_API_URL
-
-# Start frontend server
-npm run dev
+# Terminal 2 — Frontend
+npm run dev:frontend
 ```
 
-## 📁 Project Details
+Open [http://localhost:3000](http://localhost:3000) for the API (Swagger at `/api`) and [http://localhost:3001](http://localhost:3001) for the frontend.
 
-### Backend API
+## Environment Variables
 
-The backend provides a RESTful API with the following endpoints:
+### Backend (`apps/backend/.env`)
 
-- **Auth**: `/auth/login`, `/auth/register`, `/auth/profile`
-- **Workspaces**: `/workspaces/*`
-- **Boards**: `/boards/*`
-- **Columns**: `/columns/*`
-- **Tasks**: `/tasks/*`
-- **Notes**: `/notes/*`
+| Variable | Description | Example |
+|----------|-------------|---------|
+| `DATABASE_URL` | PostgreSQL connection string | `postgresql://user:password@localhost:5432/task-manager` |
+| `JWT_SECRET` | Random secret for JWT signing (min 64 chars) | `node -e "console.log(require('crypto').randomBytes(64).toString('hex'))"` |
+| `PORT` | Server port | `3000` |
+| `FRONTEND_URL` | Frontend origin for CORS | `http://localhost:3001` |
+| `REDIS_HOST` | Redis host | `localhost` |
+| `REDIS_PORT` | Redis port | `6380` |
+| `REDIS_PASSWORD` | Redis password (optional for local) | — |
 
-API documentation is available at `http://localhost:3000/api` (Swagger UI).
+### Frontend (`apps/frontend/.env.local`)
 
-### Frontend Application
+| Variable | Description | Example |
+|----------|-------------|---------|
+| `NEXT_PUBLIC_API_URL` | Backend API URL | `http://127.0.0.1:3000` |
+| `NEXT_PUBLIC_WS_URL` | WebSocket URL (same as API) | `http://127.0.0.1:3000` |
 
-The frontend includes:
+## API Endpoints
 
-- Landing page with feature overview
-- Authentication pages (login/register)
-- Dashboard with workspace management
-- Board view with Kanban functionality
-- Notes page for documentation
-- Responsive design for all screen sizes
+| Resource | Endpoints |
+|----------|-----------|
+| Auth | `POST /auth/register`, `POST /auth/login`, `POST /auth/logout`, `GET /auth/profile` |
+| Workspaces | `GET/POST /workspaces`, `PATCH/DELETE /workspaces/:id`, join via invite link |
+| Boards | `GET/POST /boards`, `PATCH/DELETE /boards/:id` |
+| Columns | `GET/POST /columns`, `PATCH/DELETE /columns/:id` (includes color) |
+| Tasks | `GET/POST /tasks`, `PATCH/DELETE /tasks/:id` |
+| Notes | `GET/POST /notes`, `PATCH/DELETE /notes/:id` |
+| Health | `GET /health` |
 
-## 🗄️ Database Schema
+Full interactive docs at `http://localhost:3000/api` (Swagger UI).
 
-The application uses the following main entities:
+## Database Schema
 
-- **User**: Authentication and user profiles
-- **Workspace**: Collaborative workspaces
-- **Board**: Kanban boards within workspaces
-- **Column**: Board columns (e.g., To Do, In Progress, Done)
-- **Task**: Individual tasks with priorities and assignments
-- **Note**: Documentation and notes
-- **Label**: Task categorization
-
-## 🔒 Environment Variables
-
-### Backend (.env)
-
-```env
-DATABASE_URL="postgresql://user:password@your-neon-host.neon.tech/dbname?sslmode=require"
-JWT_SECRET="your-secret-key"
-PORT=3000
-FRONTEND_URL="https://your-frontend.vercel.app"
+```
+User ──< WorkspaceMember >── Workspace ──< Board ──< Column ──< Task
+  │                              │                                │
+  └── UserSettings               └── Note                   Label ┘
+                                 └── WorkspaceInviteLink
 ```
 
-### Frontend (.env.local)
+Key models: **User**, **Workspace**, **WorkspaceMember**, **Board**, **Column** (with color), **Task** (with priority, due date, assignee), **Note** (Tiptap JSON), **Label**.
 
-```env
-NEXT_PUBLIC_API_URL=https://your-backend.example.com
-NEXT_PUBLIC_WS_URL=https://your-backend.example.com
-```
+Run `npx prisma studio` for a visual database browser.
 
-## 🚀 Deployment
+## Deployment
 
 ### Frontend → Vercel
 
-1. Go to [vercel.com](https://vercel.com) and import the repository
-2. Set **Root Directory** to `apps/frontend`
-3. Framework Preset: **Next.js**
-4. Override **Install Command**: `cd ../.. && npm install && npm run build:shared`
-5. Add environment variables:
-   - `NEXT_PUBLIC_API_URL` = your deployed backend URL
-   - `NEXT_PUBLIC_WS_URL` = your deployed backend URL
-6. Deploy
+1. Import repo on [vercel.com](https://vercel.com)
+2. **Root Directory**: `apps/frontend`
+3. **Framework Preset**: Next.js
+4. **Install Command** (override): `cd ../.. && npm install && npm run build:shared`
+5. **Environment variables**: `NEXT_PUBLIC_API_URL`, `NEXT_PUBLIC_WS_URL`
 
-### Backend → Railway / Render / Fly.io
+### Backend → Railway
 
-The NestJS backend uses WebSocket (Socket.IO), so it needs a persistent server (not serverless).
-
-**Railway:**
-1. Create a new project, connect your repo
-2. Set Root Directory to `apps/backend`
-3. Add environment variables: `DATABASE_URL`, `JWT_SECRET`, `PORT`, `FRONTEND_URL`
-4. Railway auto-detects the Dockerfile at `apps/backend/Dockerfile`
-
-**Or manually with Dockerfile:**
-```bash
-cd apps/backend
-docker build -f Dockerfile -t task-app-backend ../..
-docker run -p 3000:3000 --env-file .env task-app-backend
-```
+1. Create project on [railway.app](https://railway.app), connect repo
+2. The root `Dockerfile` builds the backend
+3. **Environment variables**: `DATABASE_URL`, `JWT_SECRET`, `PORT`, `FRONTEND_URL`, `REDIS_HOST`, `REDIS_PORT`, `REDIS_PASSWORD`
+4. Migrations run automatically on container start
 
 ### Database → Neon
 
-1. Create a Neon project at [neon.tech](https://neon.tech)
-2. Copy the connection string to `DATABASE_URL`
-3. Run migrations: `cd apps/backend && npx prisma migrate deploy`
+1. Create project at [neon.tech](https://neon.tech)
+2. Copy connection string to `DATABASE_URL`
 
-## 📝 Development
+### Redis → Upstash
 
-### Run Tests
+1. Create database at [upstash.com](https://upstash.com)
+2. Copy host, port, password to env vars
+
+## Testing
 
 ```bash
-# Backend tests
 cd apps/backend
-npm test
-
-# Frontend tests (if available)
-cd apps/frontend
-npm test
+npm test              # Unit tests (Jest)
+npm run test:cov      # With coverage
+npm run test:e2e      # End-to-end
 ```
 
-### Build for Production
+## Scripts
 
-```bash
-# Build backend
-cd apps/backend
-npm run build
+| Script | Description |
+|--------|-------------|
+| `npm run dev:backend` | Start backend in watch mode |
+| `npm run dev:frontend` | Start frontend dev server |
+| `npm run build:backend` | Build backend for production |
+| `npm run build:frontend` | Build frontend for production |
+| `npm run build:shared` | Compile shared-types package |
+| `npm run prisma:generate` | Generate Prisma client |
+| `npm run prisma:migrate` | Deploy migrations |
+| `npm run prisma:studio` | Open Prisma Studio |
 
-# Build frontend
-cd apps/frontend
-npm run build
-```
-
-### Code Quality
-
-```bash
-# Lint backend
-cd apps/backend
-npm run lint
-
-# Lint frontend
-cd apps/frontend
-npm run lint
-```
-
-## 🐳 Docker Support
-
-The project includes Docker configuration for easy deployment:
-
-```bash
-# Build and start all services
-docker-compose up -d
-
-# View logs
-docker-compose logs -f
-
-# Stop services
-docker-compose down
-```
-
-## 🤝 Contributing
+## Contributing
 
 1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
+2. Create a feature branch: `git checkout -b feature/my-feature`
+3. Commit changes: `git commit -m 'feat: add my feature'`
+4. Push: `git push origin feature/my-feature`
 5. Open a Pull Request
 
-## 📄 License
+Please follow [Conventional Commits](https://www.conventionalcommits.org/) for commit messages.
 
-This project is licensed under the MIT License.
+## License
 
-## 🙏 Acknowledgments
+This project is licensed under the [MIT License](LICENSE).
 
-- NestJS for the excellent backend framework
-- Next.js for the powerful React framework
-- Prisma for the amazing ORM
-- The open-source community
+## Acknowledgments
 
-## 📞 Support
-
-For questions or issues, please open an issue on GitHub.
+- [NestJS](https://nestjs.com/) — progressive Node.js framework
+- [Next.js](https://nextjs.org/) — React framework
+- [Prisma](https://prisma.io/) — next-generation ORM
+- [shadcn/ui](https://ui.shadcn.com/) — beautiful component library
+- [Socket.IO](https://socket.io/) — real-time engine
+- [Tiptap](https://tiptap.dev/) — rich text editor
 
 ---
 
-Made with ❤️ by the task-app team
+Built by [@suwantara](https://github.com/suwantara)
