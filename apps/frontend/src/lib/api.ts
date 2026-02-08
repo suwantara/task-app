@@ -138,6 +138,17 @@ class ApiClient {
     });
   }
 
+  async updateColumn(id: string, data: { name?: string; position?: number }) {
+    return this.request<Column>(`/columns/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    });
+  }
+
+  async deleteColumn(id: string) {
+    return this.request<void>(`/columns/${id}`, { method: 'DELETE' });
+  }
+
   // Task endpoints
   async getTasks(boardId: string) {
     return this.request<Task[]>(`/tasks?boardId=${boardId}`);

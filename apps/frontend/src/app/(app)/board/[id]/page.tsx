@@ -16,6 +16,11 @@ import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Skeleton } from '@/components/ui/skeleton';
 import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover';
+import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
@@ -40,6 +45,7 @@ import {
   X,
   MoreHorizontal,
   Pencil,
+  Trash2,
   Clock,
   AlignLeft,
   Star,
@@ -79,6 +85,12 @@ export default function BoardPage() {
   const [editTitle, setEditTitle] = useState('');
   const [editDescription, setEditDescription] = useState('');
   const [editPriority, setEditPriority] = useState<TaskPriority>('MEDIUM');
+
+  // Column rename/delete
+  const [renamingColumnId, setRenamingColumnId] = useState<string | null>(null);
+  const [renameColumnValue, setRenameColumnValue] = useState('');
+  const [columnPopoverId, setColumnPopoverId] = useState<string | null>(null);
+  const renameColumnRef = useRef<HTMLInputElement>(null);
 
   // Drag and drop
   const [draggedTask, setDraggedTask] = useState<Task | null>(null);
@@ -358,12 +370,89 @@ export default function BoardPage() {
               >
                 {/* Column Header */}
                 <div className="flex items-center justify-between px-3 pt-3 pb-1">
-                  <h3 className="text-sm font-semibold text-muted-foreground">
-                    {column.name}
-                  </h3>
-                  <Badge variant="secondary" className="text-xs h-5 min-w-5 justify-center">
-                    {columnTasks.length}
-                  </Badge>
+                  {renamingColumnId === column.id ? (
+                    <form
+                      className="flex-1 mr-2"
+                      onSubmit={async (e) => {
+                        e.preventDefault();
+                        if (!renameColumnValue.trim()) return;
+                        try {
+                          await apiClient.updateColumn(column.id, { name: renameColumnValue.trim() });
+                          qc.setQueryData(queryKeys.columns(boardId), (old: Column[] | undefined) =>
+                            old ? old.map((c) => c.id === column.id ? { ...c, name: renameColumnValue.trim() } : c) : old,
+                          );
+                        } catch (err) {
+                          console.error('Failed to rename column:', err);
+                        }
+                        setRenamingColumnId(null);
+                      }}
+                    >
+                      <Input
+                        ref={renameColumnRef}
+                        value={renameColumnValue}
+                        onChange={(e) => setRenameColumnValue(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Escape') setRenamingColumnId(null);
+                        }}
+                        onBlur={() => setRenamingColumnId(null)}
+                        className="h-7 text-sm"
+                        autoFocus
+                      />
+                    </form>
+                  ) : (
+                    <h3 className="text-sm font-semibold text-muted-foreground">
+                      {column.name}
+                    </h3>
+                  )}
+                  <div className="flex items-center gap-1">
+                    <Badge variant="secondary" className="text-xs h-5 min-w-5 justify-center">
+                      {columnTasks.length}
+                    </Badge>
+                    <Popover
+                      open={columnPopoverId === column.id}
+                      onOpenChange={(open) => setColumnPopoverId(open ? column.id : null)}
+                    >
+                      <PopoverTrigger asChild>
+                        <button className="rounded p-0.5 text-muted-foreground hover:bg-accent">
+                          <MoreHorizontal className="h-4 w-4" />
+                        </button>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-40 p-1" align="start">
+                        <button
+                          onClick={() => {
+                            setRenamingColumnId(column.id);
+                            setRenameColumnValue(column.name);
+                            setColumnPopoverId(null);
+                          }}
+                          className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm hover:bg-accent"
+                        >
+                          <Pencil className="h-3.5 w-3.5" />
+                          Rename
+                        </button>
+                        <button
+                          onClick={async () => {
+                            setColumnPopoverId(null);
+                            try {
+                              await apiClient.deleteColumn(column.id);
+                              qc.setQueryData(queryKeys.columns(boardId), (old: Column[] | undefined) =>
+                                old ? old.filter((c) => c.id !== column.id) : old,
+                              );
+                              // Remove tasks from deleted column
+                              qc.setQueryData(queryKeys.tasks(boardId), (old: Task[] | undefined) =>
+                                old ? old.filter((t) => t.columnId !== column.id) : old,
+                              );
+                            } catch (err) {
+                              console.error('Failed to delete column:', err);
+                            }
+                          }}
+                          className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm text-destructive hover:bg-destructive/10"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                          Delete
+                        </button>
+                      </PopoverContent>
+                    </Popover>
+                  </div>
                 </div>
 
                 {/* Cards */}

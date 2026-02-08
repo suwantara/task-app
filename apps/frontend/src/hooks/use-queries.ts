@@ -178,6 +178,29 @@ export function useCreateColumn() {
   });
 }
 
+export function useUpdateColumn() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data: { id: string; boardId: string; name?: string; position?: number }) =>
+      apiClient.updateColumn(data.id, { name: data.name, position: data.position }),
+    onSuccess: (_result, variables) => {
+      qc.invalidateQueries({ queryKey: queryKeys.columns(variables.boardId) });
+    },
+  });
+}
+
+export function useDeleteColumn() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data: { id: string; boardId: string }) =>
+      apiClient.deleteColumn(data.id),
+    onSuccess: (_result, variables) => {
+      qc.invalidateQueries({ queryKey: queryKeys.columns(variables.boardId) });
+      qc.invalidateQueries({ queryKey: queryKeys.tasks(variables.boardId) });
+    },
+  });
+}
+
 export function useCreateTask() {
   const qc = useQueryClient();
   return useMutation({
