@@ -4,7 +4,7 @@ import { JwtService } from '@nestjs/jwt';
 import { User } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 
-interface SafeUser {
+export interface SafeUser {
   id: string;
   email: string;
   name: string;

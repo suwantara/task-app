@@ -9,11 +9,11 @@ import {
 export class CreateColumnDto {
   @IsNotEmpty()
   @IsString()
-  readonly name: string;
+  readonly name!: string;
 
   @IsNotEmpty()
   @IsUUID()
-  readonly boardId: string;
+  readonly boardId!: string;
 
   @IsOptional()
   @IsNumber()

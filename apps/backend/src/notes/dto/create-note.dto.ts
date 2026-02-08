@@ -9,11 +9,11 @@ import {
 export class CreateNoteDto {
   @IsNotEmpty()
   @IsString()
-  readonly title: string;
+  readonly title!: string;
 
   @IsNotEmpty()
   @IsUUID()
-  readonly workspaceId: string;
+  readonly workspaceId!: string;
 
   @IsOptional()
   @IsString()

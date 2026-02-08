@@ -18,5 +18,5 @@ export class CreateInviteLinkDto {
 
 export class UpdateMemberRoleDto {
   @IsEnum(MemberRole)
-  readonly role: MemberRole;
+  readonly role!: MemberRole;
 }

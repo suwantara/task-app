@@ -10,7 +10,7 @@ import Redis from 'ioredis';
 @Injectable()
 export class CacheService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(CacheService.name);
-  private client: Redis;
+  private client!: Redis;
   private subClient: Redis | null = null;
   private readonly prefix = 'task-app:';
   private readonly defaultTTL = 300; // 5 minutes in seconds

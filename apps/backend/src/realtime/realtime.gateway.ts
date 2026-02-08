@@ -33,7 +33,7 @@ export class RealtimeGateway
   private readonly logger = new Logger(RealtimeGateway.name);
 
   @WebSocketServer()
-  server: Server;
+  server!: Server;
 
   // In-memory Yjs room tracking (per-instance, for cleanup only)
   private readonly yjsRooms = new Map<string, Set<string>>();

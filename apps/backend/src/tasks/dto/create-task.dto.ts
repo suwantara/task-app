@@ -11,7 +11,7 @@ import {
 export class CreateTaskDto {
   @IsNotEmpty()
   @IsString()
-  readonly title: string;
+  readonly title!: string;
 
   @IsOptional()
   @IsString()
@@ -19,7 +19,7 @@ export class CreateTaskDto {
 
   @IsNotEmpty()
   @IsUUID()
-  readonly columnId: string;
+  readonly columnId!: string;
 
   @IsOptional()
   @IsNumber()
