@@ -6,7 +6,6 @@ import { useWorkspace } from '@/contexts/workspace-context';
 import { useRouter } from 'next/navigation';
 import { apiClient } from '@/lib/api';
 import { useNoteRealtime } from '@/hooks/use-realtime';
-import { useSocket } from '@/contexts/socket-context';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -29,8 +28,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { SimpleEditor } from '@/components/tiptap-templates/simple/simple-editor';
 import { Plus, Save, FileText, Clock, Search, Pencil, Trash2, MoreHorizontal } from 'lucide-react';
-import * as Y from 'yjs';
-import { SocketIOYjsProvider, getUserColor } from '@/lib/y-socket-io-provider';
+import { SocketIOYjsProvider } from '@/lib/y-socket-io-provider';
 
 interface Note {
   id: string;
@@ -70,11 +68,8 @@ export default function NotesPage() {
   const isLocalEdit = useRef(false);
   const selectedNoteRef = useRef<string | null>(null);
 
-  // Yjs collaborative editing
-  const { socket } = useSocket();
-  const [ydoc, setYdoc] = useState<Y.Doc | null>(null);
+  // Yjs collaborative editing temporarily disabled (TipTap reconfigure bug)
   const providerRef = useRef<SocketIOYjsProvider | null>(null);
-  const [yjsSynced, setYjsSynced] = useState(false);
   const [editorVersion, setEditorVersion] = useState(0);
 
   // Helper: get editors for a specific note
@@ -308,18 +303,6 @@ export default function NotesPage() {
       providerRef.current.destroy();
       providerRef.current = null;
     }
-    // Cleanup previous ydoc
-    // Cleanup previous ydoc
-    setYdoc((prevYdoc) => {
-      if (prevYdoc) {
-        // Delay destruction to allow Editor component to unmount and disconnect gracefully
-        setTimeout(() => {
-          prevYdoc.destroy();
-        }, 100);
-      }
-      return null;
-    });
-    setYjsSynced(false);
     setEditorVersion((v) => v + 1);
 
     try {
@@ -334,27 +317,8 @@ export default function NotesPage() {
             : JSON.stringify(fullNote.content, null, 2);
       }
       setEditingContent(contentStr);
-
-      // Initialize Yjs for collaborative editing
-      if (socket && user) {
-        const newYdoc = new Y.Doc();
-
-        // Initialize content from server
-        const xmlFragment = newYdoc.getXmlFragment('prosemirror');
-        if (contentStr && xmlFragment.length === 0) {
-          // Content will be synced from server via provider
-        }
-
-        const provider = new SocketIOYjsProvider(socket, fullNote.id, newYdoc, {
-          user: { name: user.name || user.email, color: getUserColor(user.id) },
-          onSynced: () => setYjsSynced(true),
-        });
-        providerRef.current = provider;
-        
-        // Set ydoc state AFTER everything is initialized
-        setYdoc(newYdoc);
-        setEditorVersion((v) => v + 1);
-      }
+      // Note: Yjs collaborative editing temporarily disabled (TipTap reconfigure bug)
+      // Real-time sync still works via Socket.IO emitContentUpdate
     } catch (error) {
       console.error('Failed to load note:', error);
     }
@@ -574,31 +538,14 @@ export default function NotesPage() {
               );
             })()}
 
-            {/* Rich Text Editor */}
+            {/* Rich Text Editor - Yjs collaboration temporarily disabled */}
             <div className="flex-1 overflow-hidden">
-              {ydoc && yjsSynced ? (
-                <SimpleEditor
-                  key={`editor-yjs-${selectedNote?.id}-${editorVersion}`}
-                  content={editingContent}
-                  onChange={handleContentChange}
-                  placeholder="Start writing..."
-                  ydoc={ydoc}
-                  awareness={providerRef.current?.awareness}
-                  user={user ? { name: user.name || user.email, color: providerRef.current?.userColor || '#888' } : undefined}
-                />
-              ) : (
-                <SimpleEditor
-                  key={`editor-plain-${selectedNote?.id}-${editorVersion}`}
-                  content={editingContent}
-                  onChange={handleContentChange}
-                  placeholder="Start writing..."
-                />
-              )}
-              {!yjsSynced && selectedNote && (
-                <div className="absolute bottom-2 right-2 text-xs text-muted-foreground">
-                  Syncing...
-                </div>
-              )}
+              <SimpleEditor
+                key={`editor-${selectedNote?.id}-${editorVersion}`}
+                content={editingContent}
+                onChange={handleContentChange}
+                placeholder="Start writing..."
+              />
             </div>
 
           </>
