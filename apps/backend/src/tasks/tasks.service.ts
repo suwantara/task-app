@@ -27,6 +27,14 @@ export class TasksService {
       createTaskDto.columnId,
     );
 
+    // SECURITY: Validate assigneeId is a workspace member
+    if (createTaskDto.assigneeId) {
+      await this.permissions.validateAssigneeInWorkspace(
+        createTaskDto.assigneeId,
+        member.workspaceId,
+      );
+    }
+
     // Calculate position
     let position = createTaskDto.order;
     if (position === undefined) {
@@ -128,6 +136,26 @@ export class TasksService {
 
     if (!task) throw new NotFoundException('Task not found');
     const boardId = task.boardId;
+    const workspaceId = task.workspaceId;
+
+    // SECURITY: Validate columnId belongs to the same board
+    if (updateTaskDto.columnId && updateTaskDto.columnId !== task.columnId) {
+      await this.permissions.validateColumnBelongsToBoard(
+        updateTaskDto.columnId,
+        boardId,
+      );
+    }
+
+    // SECURITY: Validate assigneeId is a workspace member
+    if (
+      updateTaskDto.assigneeId &&
+      updateTaskDto.assigneeId !== task.assigneeId
+    ) {
+      await this.permissions.validateAssigneeInWorkspace(
+        updateTaskDto.assigneeId,
+        workspaceId,
+      );
+    }
 
     // 2. Prepare update data
     const { dueDate, ...rest } = updateTaskDto;
