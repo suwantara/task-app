@@ -539,7 +539,7 @@ export default function BoardPage() {
 
                 {/* Column color indicator */}
                 {column.color && (
-                  <div className={`mx-3 h-0.5 rounded-full ${getColumnColor(column.color)?.dot ?? ''}`} />
+                  <div className={`mx-3 mt-2 h-0.5 rounded-full ${getColumnColor(column.color)?.dot ?? ''}`} />
                 )}
 
                 {/* Cards */}
@@ -553,14 +553,12 @@ export default function BoardPage() {
                         draggable
                         onDragStart={() => handleDragStart(task)}
                         className={`group relative cursor-grab rounded-lg border bg-card p-3 shadow-sm hover:shadow-md hover:border-primary/30 active:cursor-grabbing ${
-                          colColor ? `border-t-2 ${colColor.border}` : ''
-                        } ${
                           draggedTask?.id === task.id ? 'opacity-40' : ''
                         }`}
                       >
-                        {/* Priority bar */}
+                        {/* Color bar — column color if set, otherwise priority */}
                         <div
-                          className={`absolute left-0 top-0 bottom-0 w-1 rounded-l-lg ${PRIORITY_CONFIG[task.priority].color}`}
+                          className={`absolute left-0 top-0 bottom-0 w-1 rounded-l-lg ${colColor?.dot ?? PRIORITY_CONFIG[task.priority].color}`}
                         />
 
                         <div className="pl-2">
@@ -638,7 +636,7 @@ export default function BoardPage() {
                               setNewCardTitle('');
                             }
                           }}
-                          className="min-h-15 resize-none border-0 p-1 text-sm shadow-none focus-visible:ring-0"
+                          className="min-h-15 resize-none border-0 p-2 text-sm shadow-none focus-visible:ring-0"
                           rows={2}
                         />
                         <div className="mt-3 flex items-center gap-3">
