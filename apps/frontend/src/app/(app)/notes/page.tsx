@@ -10,7 +10,6 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import {
   Dialog,
   DialogContent,
@@ -28,7 +27,6 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { SimpleEditor } from '@/components/tiptap-templates/simple/simple-editor';
 import { Plus, Save, FileText, Clock, Search, Pencil, Trash2, MoreHorizontal } from 'lucide-react';
-import { SocketIOYjsProvider } from '@/lib/y-socket-io-provider';
 
 interface Note {
   id: string;
@@ -60,84 +58,31 @@ export default function NotesPage() {
   const [renameTitle, setRenameTitle] = useState('');
   const [deleting, setDeleting] = useState(false);
   const autoSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const editingEmitTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Realtime: track who's editing which note  { noteId -> { userId -> { name, timeout } } }
-  const [editingUsers, setEditingUsers] = useState<Map<string, Map<string, { userId: string; name: string; timeout: ReturnType<typeof setTimeout> }>>>(new Map());
   // Flag to ignore remote content updates when we are actively editing
   const isLocalEdit = useRef(false);
   const selectedNoteRef = useRef<string | null>(null);
 
-  // Yjs collaborative editing temporarily disabled (TipTap reconfigure bug)
-  const providerRef = useRef<SocketIOYjsProvider | null>(null);
-  const [editorVersion, setEditorVersion] = useState(0);
-
-  // Helper: get editors for a specific note
-  const getEditorsForNote = useCallback((noteId: string) => {
-    return editingUsers.get(noteId) || new Map();
-  }, [editingUsers]);
-
   // Realtime hook
-  const { emitNoteEditing, emitNoteStopEditing, emitContentUpdate } = useNoteRealtime(
+  useNoteRealtime(
     activeWorkspace?.id || null,
     {
-      onSomeoneEditing: useCallback((data: { noteId: string; userId: string; name: string }) => {
-        if (data.userId === user?.id) return;
-        setEditingUsers((prev) => {
-          const next = new Map(prev);
-          const noteEditors = new Map(next.get(data.noteId) || new Map());
-          // Clear existing timeout
-          const existing = noteEditors.get(data.userId);
-          if (existing?.timeout) clearTimeout(existing.timeout);
-          // Auto-clear after 5s of no editing signals
-          const timeout = setTimeout(() => {
-            setEditingUsers((p) => {
-              const n = new Map(p);
-              const ne = new Map(n.get(data.noteId) || new Map());
-              ne.delete(data.userId);
-              if (ne.size === 0) n.delete(data.noteId);
-              else n.set(data.noteId, ne);
-              return n;
-            });
-          }, 5000);
-          noteEditors.set(data.userId, { userId: data.userId, name: data.name, timeout });
-          next.set(data.noteId, noteEditors);
-          return next;
-        });
-      }, [user?.id]),
-      onSomeoneStoppedEditing: useCallback((data: { noteId: string; userId: string }) => {
-        setEditingUsers((prev) => {
-          const next = new Map(prev);
-          const noteEditors = new Map(next.get(data.noteId) || new Map());
-          const existing = noteEditors.get(data.userId);
-          if (existing?.timeout) clearTimeout(existing.timeout);
-          noteEditors.delete(data.userId);
-          if (noteEditors.size === 0) next.delete(data.noteId);
-          else next.set(data.noteId, noteEditors);
-          return next;
-        });
-      }, []),
-      onContentChanged: useCallback((data: { noteId: string; title: string; content: string; userId: string }) => {
-        if (data.userId === user?.id) return;
-        // Only apply remote changes if we're not actively editing
-        if (!isLocalEdit.current && selectedNoteRef.current === data.noteId) {
-          setEditingTitle(data.title || '');
-          setEditingContent(data.content || '');
-        }
-        // Update the note in the sidebar list
-        setNotes((prev) =>
-          prev.map((n) =>
-            n.id === data.noteId
-              ? { ...n, title: data.title || n.title, updatedAt: new Date().toISOString() }
-              : n,
-          ),
-        );
-      }, [user?.id]),
       onNoteUpdated: useCallback((note: unknown) => {
         const n = note as Note;
+        // Update list
         setNotes((prev) =>
           prev.map((existing) => (existing.id === n.id ? { ...existing, ...n } : existing)),
         );
+        
+        // Update current note if selected and not currently being edited locally
+        if (selectedNoteRef.current === n.id && !isLocalEdit.current) {
+          setSelectedNote((prev) => prev ? { ...prev, ...n } : null);
+          setEditingTitle(n.title);
+          const content = typeof n.content === 'string' 
+            ? n.content 
+            : JSON.stringify(n.content || '', null, 2);
+          setEditingContent(content);
+        }
       }, []),
     },
   );
@@ -159,17 +104,10 @@ export default function NotesPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeWorkspace?.id]);
 
-  // Cleanup: emit stop-editing on unmount and cleanup Yjs
+  // Cleanup
   useEffect(() => {
     return () => {
       if (autoSaveTimer.current) clearTimeout(autoSaveTimer.current);
-      if (editingEmitTimer.current) clearTimeout(editingEmitTimer.current);
-      // Cleanup Yjs provider and doc
-      if (providerRef.current) {
-        providerRef.current.destroy();
-        providerRef.current = null;
-      }
-      // ydoc cleanup is handled by setYdoc in component unmount
     };
   }, []);
 
@@ -219,14 +157,17 @@ export default function NotesPage() {
   };
 
   const handleSaveNote = async () => {
-    if (!selectedNote) return;
+    if (!selectedNote || !user) return;
     setSaving(true);
+    isLocalEdit.current = false; // Allow remote updates after save
 
     try {
       await apiClient.updateNote(selectedNote.id, {
         title: editingTitle,
         content: editingContent,
       });
+      // No manual emit - backend broadcasts note:updated
+      
       await loadNotes();
     } catch (error) {
       console.error('Failed to save note:', error);
@@ -236,19 +177,10 @@ export default function NotesPage() {
   };
 
   // Auto-save with debounce + realtime broadcast
+  // Auto-save with debounce
   const handleContentChange = (content: string) => {
     setEditingContent(content);
     isLocalEdit.current = true;
-
-    // Emit editing indicator (throttled)
-    if (selectedNote && user) {
-      if (editingEmitTimer.current) clearTimeout(editingEmitTimer.current);
-      editingEmitTimer.current = setTimeout(() => {
-        isLocalEdit.current = false;
-      }, 3000);
-      emitNoteEditing(selectedNote.id, user.id, user.name || user.email);
-      emitContentUpdate(selectedNote.id, editingTitle, content, user.id);
-    }
 
     if (autoSaveTimer.current) clearTimeout(autoSaveTimer.current);
     autoSaveTimer.current = setTimeout(() => {
@@ -262,15 +194,6 @@ export default function NotesPage() {
     setEditingTitle(title);
     isLocalEdit.current = true;
 
-    if (selectedNote && user) {
-      if (editingEmitTimer.current) clearTimeout(editingEmitTimer.current);
-      editingEmitTimer.current = setTimeout(() => {
-        isLocalEdit.current = false;
-      }, 3000);
-      emitNoteEditing(selectedNote.id, user.id, user.name || user.email);
-      emitContentUpdate(selectedNote.id, title, editingContent, user.id);
-    }
-
     if (autoSaveTimer.current) clearTimeout(autoSaveTimer.current);
     autoSaveTimer.current = setTimeout(() => {
       if (selectedNote) {
@@ -281,9 +204,6 @@ export default function NotesPage() {
 
   const handleSelectNote = async (note: Note) => {
     // Stop editing signal for previous note
-    if (selectedNote && user) {
-      emitNoteStopEditing(selectedNote.id, user.id);
-    }
     isLocalEdit.current = false;
 
     // Save current note before switching
@@ -297,13 +217,6 @@ export default function NotesPage() {
         content: editingContent,
       }).catch(() => {});
     }
-
-    // Cleanup previous Yjs provider
-    if (providerRef.current) {
-      providerRef.current.destroy();
-      providerRef.current = null;
-    }
-    setEditorVersion((v) => v + 1);
 
     try {
       const fullNote = await apiClient.getNote(note.id);
@@ -441,9 +354,6 @@ export default function NotesPage() {
                 >
                   <div className="relative mt-0.5">
                     <FileText className="size-4 shrink-0 text-muted-foreground" />
-                    {editingUsers.has(note.id) && (editingUsers.get(note.id)?.size ?? 0) > 0 && (
-                      <span className="absolute -right-0.5 -top-0.5 size-2 rounded-full bg-blue-500 ring-1 ring-background" />
-                    )}
                   </div>
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-sm font-medium">{note.title}</p>
@@ -513,35 +423,12 @@ export default function NotesPage() {
               </div>
             </div>
 
-            {/* Realtime editing indicator */}
-            {selectedNote && getEditorsForNote(selectedNote.id).size > 0 && (() => {
-              const editors = Array.from(getEditorsForNote(selectedNote.id).values());
-              return (
-                <div className="flex items-center gap-2 border-b bg-blue-50 px-6 py-1.5 dark:bg-blue-950/30">
-                  <div className="flex -space-x-1.5">
-                    {editors.map((eu) => (
-                      <Avatar key={eu.userId} className="size-5 border-2 border-blue-50 dark:border-blue-950">
-                        <AvatarFallback className="bg-blue-500 text-[10px] text-white">
-                          {(eu.name ?? '?').charAt(0).toUpperCase()}
-                        </AvatarFallback>
-                      </Avatar>
-                    ))}
-                  </div>
-                  <div className="flex items-center gap-1.5">
-                    <Pencil className="size-3 animate-pulse text-blue-500" />
-                    <span className="text-xs text-blue-600 dark:text-blue-400">
-                      {editors.map((eu) => (eu.name ?? 'Unknown').split('@')[0]).join(', ')}{' '}
-                      {editors.length === 1 ? 'is' : 'are'} editing...
-                    </span>
-                  </div>
-                </div>
-              );
-            })()}
 
-            {/* Rich Text Editor - Yjs collaboration temporarily disabled */}
+
+            {/* Rich Text Editor */}
             <div className="flex-1 overflow-hidden">
               <SimpleEditor
-                key={`editor-${selectedNote?.id}-${editorVersion}`}
+                key={`editor-${selectedNote?.id}`}
                 content={editingContent}
                 onChange={handleContentChange}
                 placeholder="Start writing..."

@@ -105,9 +105,6 @@ export function useNoteRealtime(
   workspaceId: string | null,
   callbacks: {
     onNoteUpdated?: (note: unknown) => void;
-    onSomeoneEditing?: (data: { noteId: string; userId: string; name: string }) => void;
-    onSomeoneStoppedEditing?: (data: { noteId: string; userId: string }) => void;
-    onContentChanged?: (data: { noteId: string; title: string; content: string; userId: string }) => void;
   },
 ) {
   const { socket, joinRoom, leaveRoom } = useSocket();
@@ -131,21 +128,6 @@ export function useNoteRealtime(
       socket.on('note:updated', h);
       handlers.push(['note:updated', h]);
     }
-    if (callbacks.onSomeoneEditing) {
-      const h = callbacks.onSomeoneEditing as (...args: unknown[]) => void;
-      socket.on('note:someone-editing', h);
-      handlers.push(['note:someone-editing', h]);
-    }
-    if (callbacks.onSomeoneStoppedEditing) {
-      const h = callbacks.onSomeoneStoppedEditing as (...args: unknown[]) => void;
-      socket.on('note:someone-stopped-editing', h);
-      handlers.push(['note:someone-stopped-editing', h]);
-    }
-    if (callbacks.onContentChanged) {
-      const h = callbacks.onContentChanged as (...args: unknown[]) => void;
-      socket.on('note:content-changed', h);
-      handlers.push(['note:content-changed', h]);
-    }
 
     return () => {
       for (const [event, handler] of handlers) {
@@ -153,48 +135,4 @@ export function useNoteRealtime(
       }
     };
   }, [socket, callbacks]);
-
-  const emitNoteEditing = useCallback(
-    (noteId: string, userId: string, name: string) => {
-      if (socket && workspaceId) {
-        socket.emit('note:editing', {
-          room: `workspace:${workspaceId}`,
-          noteId,
-          userId,
-          name,
-        });
-      }
-    },
-    [socket, workspaceId],
-  );
-
-  const emitNoteStopEditing = useCallback(
-    (noteId: string, userId: string) => {
-      if (socket && workspaceId) {
-        socket.emit('note:stop-editing', {
-          room: `workspace:${workspaceId}`,
-          noteId,
-          userId,
-        });
-      }
-    },
-    [socket, workspaceId],
-  );
-
-  const emitContentUpdate = useCallback(
-    (noteId: string, title: string, content: string, userId: string) => {
-      if (socket && workspaceId) {
-        socket.emit('note:content-update', {
-          room: `workspace:${workspaceId}`,
-          noteId,
-          title,
-          content,
-          userId,
-        });
-      }
-    },
-    [socket, workspaceId],
-  );
-
-  return { emitNoteEditing, emitNoteStopEditing, emitContentUpdate };
 }

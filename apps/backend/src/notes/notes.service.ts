@@ -125,9 +125,13 @@ export class NotesService {
   }
 
   async update(id: string, userId: string, updateNoteDto: UpdateNoteDto) {
+    // Fetch current state with all relations needed for cache/permissions
     const note = await this.prisma.note.findUnique({
       where: { id },
-      include: { workspace: { include: { members: true } } },
+      include: {
+        creator: { select: { id: true, name: true, avatarUrl: true } },
+        workspace: { include: { members: true } },
+      },
     });
 
     if (!note) throw new NotFoundException('Note not found');
@@ -135,18 +139,33 @@ export class NotesService {
     const isMember = note.workspace.members.some((m) => m.userId === userId);
     if (!isMember) throw new ForbiddenException('Access denied');
 
+    // 1. Optimistic Update & Save to Redis immediately
+    const optimisticNote = {
+      ...note,
+      ...updateNoteDto,
+      updatedAt: new Date(),
+    };
+    await this.cache.set(this.getCacheKey.note(id), optimisticNote);
+
+    // 2. Broadcast to other users immediately
+    this.realtime.emitNoteUpdated(note.workspaceId, optimisticNote);
+
+    // 3. Persist to Database
     const updated = await this.prisma.note.update({
       where: { id },
       data: updateNoteDto,
+      include: {
+        creator: { select: { id: true, name: true, avatarUrl: true } },
+        workspace: { include: { members: true } },
+      },
     });
 
-    // Invalidate caches
-    await Promise.all([
-      this.cache.del(this.getCacheKey.note(id)),
-      this.cache.del(this.getCacheKey.notesList(note.workspaceId)),
-    ]);
+    // 4. Update cache with authoritative DB result (ensure consistency)
+    await this.cache.set(this.getCacheKey.note(id), updated);
 
-    this.realtime.emitNoteUpdated(note.workspaceId, updated);
+    // Invalidate list cache
+    await this.cache.del(this.getCacheKey.notesList(note.workspaceId));
+
     return updated;
   }
 
