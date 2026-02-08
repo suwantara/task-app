@@ -50,10 +50,10 @@ export default function AppLayout({ children }: Readonly<{ children: React.React
               <header className="flex h-12 shrink-0 items-center gap-2 border-b px-4">
                 <SidebarTrigger className="-ml-1" />
                 <Separator orientation="vertical" className="mr-2 h-4" />
-                <RealTimeClock />
-                <div className="ml-auto">
-                  <PresenceIndicator />
+                <div className="flex flex-1 justify-center">
+                  <RealTimeClock />
                 </div>
+                <PresenceIndicator />
               </header>
               <main className="flex-1">{children}</main>
             </SidebarInset>
