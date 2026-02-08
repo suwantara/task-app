@@ -283,17 +283,19 @@ export default function BoardPage() {
         <div className="flex items-center gap-4 border-b px-6 py-3">
           <Skeleton className="h-6 w-40" />
         </div>
-        <div className="flex flex-1 gap-3 overflow-x-auto p-4">
-          {[1, 2, 3].map((i) => (
-            <div key={i} className="w-68 shrink-0">
-              <Skeleton className="mb-3 h-8 w-full rounded" />
-              <div className="space-y-2">
-                <Skeleton className="h-20 w-full rounded" />
-                <Skeleton className="h-20 w-full rounded" />
+        <ScrollArea orientation="horizontal" className="min-h-0 flex-1">
+          <div className="flex h-full gap-3 p-4">
+            {[1, 2, 3].map((i) => (
+              <div key={i} className="w-68 shrink-0">
+                <Skeleton className="mb-3 h-8 w-full rounded" />
+                <div className="space-y-2">
+                  <Skeleton className="h-20 w-full rounded" />
+                  <Skeleton className="h-20 w-full rounded" />
+                </div>
               </div>
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        </ScrollArea>
       </div>
     );
   }
@@ -334,7 +336,8 @@ export default function BoardPage() {
         </div>
 
         {/* Columns */}
-        <div className="flex flex-1 gap-3 overflow-x-auto p-4">
+        <ScrollArea orientation="horizontal" className="min-h-0 flex-1">
+          <div className="flex h-full gap-3 p-4">
           {columns.map((column) => {
             const columnTasks = tasks
               .filter((t) => t.columnId === column.id)
@@ -344,7 +347,7 @@ export default function BoardPage() {
               <section
                 key={column.id}
                 aria-label={`Column: ${column.name}`}
-                className={`flex w-68 shrink-0 flex-col rounded-xl bg-muted/50 ${
+                className={`flex max-h-full w-68 shrink-0 flex-col rounded-xl bg-muted/50 ${
                   dragOverColumn === column.id
                     ? 'ring-2 ring-primary/50'
                     : ''
@@ -542,7 +545,8 @@ export default function BoardPage() {
               </button>
             )}
           </div>
-        </div>
+          </div>
+        </ScrollArea>
 
         {/* Edit Task Dialog */}
         <Dialog
