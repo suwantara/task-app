@@ -235,7 +235,8 @@ export default function WorkspaceMembersPage() {
   }
 
   return (
-    <div className="container max-w-4xl py-8 space-y-8">
+    <div className="flex-1 overflow-y-auto p-6">
+      <div className="mx-auto max-w-3xl space-y-8">
       {/* Header */}
       <div className="space-y-2">
         <div className="flex items-center gap-3">
@@ -453,6 +454,7 @@ export default function WorkspaceMembersPage() {
           </div>
         </CardContent>
       </Card>
+      </div>
     </div>
   );
 }
