@@ -67,9 +67,9 @@ export default function AppLayout({ children }: Readonly<{ children: React.React
         <PagePresenceTracker />
         <WorkspaceDeletedListener />
         <TooltipProvider delayDuration={200}>
-          <SidebarProvider>
+          <SidebarProvider className="h-svh">
             <AppSidebar />
-            <SidebarInset className="overflow-hidden">
+            <SidebarInset className="overflow-hidden h-full">
               <header className="flex h-12 shrink-0 items-center gap-2 border-b px-4">
                 <SidebarTrigger className="-ml-1" />
                 <Separator orientation="vertical" className="mr-2 h-4" />

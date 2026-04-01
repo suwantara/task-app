@@ -9,23 +9,21 @@
   }
 
   width: 100%;
-  height: 100%;
-  display: flex;
-  flex-direction: column;
+
+  /* Toolbar scrolls with content — override the sticky behaviour */
+  .tiptap-toolbar[data-variant="fixed"] {
+    position: relative;
+    top: auto;
+  }
 }
 
 .simple-editor-content {
   max-width: 720px;
   width: 100%;
   margin: 0 auto;
-  height: 100%;
-  display: flex;
-  flex-direction: column;
-  flex: 1;
 }
 
 .simple-editor-content .tiptap.ProseMirror.simple-editor {
-  flex: 1;
   padding: 1.5rem 2rem 10rem;
   font-family: "DM Sans", sans-serif;
 }

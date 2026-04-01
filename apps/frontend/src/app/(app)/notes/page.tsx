@@ -29,7 +29,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { SimpleEditor } from '@/components/tiptap-templates/simple/simple-editor';
-import { Plus, FileText, Clock, Search, Pencil, Trash2, MoreHorizontal, Check, Loader2, PenLine, RefreshCw } from 'lucide-react';
+import { Plus, FileText, Clock, Search, Pencil, Trash2, MoreHorizontal, Check, Loader2, PenLine, RefreshCw, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
 
 export default function NotesPage() {
   const { user, loading: authLoading } = useAuthGuard();
@@ -53,6 +53,7 @@ export default function NotesPage() {
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [noteToModify, setNoteToModify] = useState<Note | null>(null);
   const [renameTitle, setRenameTitle] = useState('');
+  const [showSidebar, setShowSidebar] = useState(true);
 
   // Typing indicator from other users
   const [typingUsers, setTypingUsers] = useState<Map<string, string>>(new Map());
@@ -413,6 +414,7 @@ export default function NotesPage() {
   return (
     <div className="flex h-full">
       {/* Sidebar - Note List */}
+      {showSidebar && (
       <div className="flex w-72 shrink-0 flex-col border-r">
         <div className="flex items-center justify-between border-b px-4 py-3">
           <h2 className="text-sm font-semibold">Notes</h2>
@@ -516,6 +518,7 @@ export default function NotesPage() {
           </div>
         </ScrollArea>
       </div>
+      )}
 
       {/* Editor Area */}
       <div className="flex flex-1 flex-col overflow-hidden">
@@ -523,14 +526,25 @@ export default function NotesPage() {
           <>
             {/* Title bar */}
             <div className="flex items-center justify-between border-b px-6 py-3">
+              <div className="flex items-center gap-2 shrink-0">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 w-7 p-0 shrink-0"
+                  onClick={() => setShowSidebar((v) => !v)}
+                  title={showSidebar ? 'Hide notes list' : 'Show notes list'}
+                >
+                  {showSidebar ? <PanelLeftClose className="size-4" /> : <PanelLeftOpen className="size-4" />}
+                </Button>
+              </div>
               <input
                 type="text"
                 value={editingTitle}
                 onChange={(e) => handleTitleChange(e.target.value)}
-                className="w-full bg-transparent text-2xl font-bold outline-none placeholder:text-muted-foreground"
+                className="flex-1 mx-3 bg-transparent text-2xl font-bold outline-none placeholder:text-muted-foreground"
                 placeholder="Untitled"
               />
-              <div className="flex items-center gap-2 shrink-0 ml-4">
+              <div className="flex items-center gap-2 shrink-0">
                 {saveStatus === 'saving' && (
                   <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
                     <Loader2 className="size-3.5 animate-spin" />
@@ -572,22 +586,36 @@ export default function NotesPage() {
 
           </>
         ) : (
-          <div className="flex flex-1 flex-col items-center justify-center gap-4 text-muted-foreground">
-            <FileText className="size-12 opacity-30" />
-            <div className="text-center">
-              <p className="text-sm font-medium">No note selected</p>
-              <p className="mt-1 text-xs">
-                Select a note from the sidebar or create a new one
-              </p>
+          <div className="flex flex-1 flex-col overflow-hidden">
+            {/* Toggle sidebar button even on empty state */}
+            <div className="flex items-center border-b px-4 py-3">
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 w-7 p-0"
+                onClick={() => setShowSidebar((v) => !v)}
+                title={showSidebar ? 'Hide notes list' : 'Show notes list'}
+              >
+                {showSidebar ? <PanelLeftClose className="size-4" /> : <PanelLeftOpen className="size-4" />}
+              </Button>
             </div>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setShowCreateModal(true)}
-            >
-              <Plus className="mr-2 size-4" />
-              New Note
-            </Button>
+            <div className="flex flex-1 flex-col items-center justify-center gap-4 text-muted-foreground">
+              <FileText className="size-12 opacity-30" />
+              <div className="text-center">
+                <p className="text-sm font-medium">No note selected</p>
+                <p className="mt-1 text-xs">
+                  Select a note from the sidebar or create a new one
+                </p>
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setShowCreateModal(true)}
+              >
+                <Plus className="mr-2 size-4" />
+                New Note
+              </Button>
+            </div>
           </div>
         )}
       </div>
