@@ -101,10 +101,10 @@ export const TableButton = forwardRef<HTMLButtonElement, TableButtonProps>(
                 left: 0,
                 zIndex: 50,
                 minWidth: 200,
-                background: "var(--tt-surface-bg, #fff)",
-                border: "1px solid var(--tt-gray-light-a-200, #e2e8f0)",
+                background: "var(--tt-toolbar-bg-color)",
+                border: "1px solid var(--tt-toolbar-border-color)",
                 borderRadius: 8,
-                boxShadow: "0 8px 24px rgba(0,0,0,0.12)",
+                boxShadow: "0 8px 24px rgba(0,0,0,0.18)",
                 padding: "4px 0",
               }}
             >
@@ -129,7 +129,7 @@ export const TableButton = forwardRef<HTMLButtonElement, TableButtonProps>(
                       key={`divider-${i}`}
                       style={{
                         height: 1,
-                        background: "var(--tt-gray-light-a-200, #e2e8f0)",
+                        background: "var(--tt-toolbar-border-color)",
                         margin: "4px 0",
                       }}
                     />
@@ -153,12 +153,12 @@ export const TableButton = forwardRef<HTMLButtonElement, TableButtonProps>(
                       border: "none",
                       cursor: "pointer",
                       fontSize: 13,
-                      color: item.danger ? "var(--tt-red-600, #dc2626)" : "inherit",
+                      color: item.danger ? "var(--tt-red-600, #dc2626)" : "var(--tt-theme-text, currentColor)",
                       textAlign: "left",
                     }}
                     onMouseEnter={(e) => {
                       (e.currentTarget as HTMLButtonElement).style.background =
-                        "var(--tt-gray-light-a-50, #f8fafc)"
+                        "var(--tt-toolbar-border-color)"
                     }}
                     onMouseLeave={(e) => {
                       (e.currentTarget as HTMLButtonElement).style.background = "none"
