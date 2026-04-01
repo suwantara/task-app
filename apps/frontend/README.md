@@ -1,128 +1,176 @@
-# Task Management Frontend
+# TaskFlow — Frontend
 
-A modern, responsive task management application built with Next.js, React, and Tailwind CSS.
-
-## Features
-
-- **Authentication**: Secure login and registration
-- **Workspaces**: Organize your projects into separate workspaces
-- **Kanban Boards**: Visual task management with drag-and-drop functionality
-- **Tasks**: Create, edit, and delete tasks with priorities and descriptions
-- **Notes**: Rich text note-taking for documentation
-- **Real-time**: Ready for real-time collaboration (WebSocket integration)
+Next.js 16 frontend for TaskFlow. Implements the full Kanban board, collaborative notes, workspace management, and real-time presence using Socket.IO and TanStack Query.
 
 ## Tech Stack
 
-- **Next.js 16**: React framework with App Router
-- **TypeScript**: Type-safe development
-- **Tailwind CSS**: Utility-first CSS framework
-- **Shadcn/UI**: High-quality UI components
-- **@dnd-kit**: Drag-and-drop functionality
-
-## Getting Started
-
-### Prerequisites
-
-- Node.js 18+
-- npm or yarn
-- Backend API running (see apps/backend)
-
-### Installation
-
-```bash
-# Install dependencies
-npm install
-
-# Set up environment variables
-cp .env.local.example .env.local
-# Edit .env.local and set NEXT_PUBLIC_API_URL
-
-# Run development server
-npm run dev
-```
-
-Open [http://localhost:3000](http://localhost:3000) to view the application.
-
-### Environment Variables
-
-Create a `.env.local` file with:
-
-```
-NEXT_PUBLIC_API_URL=http://localhost:3000
-```
-
-## Development
-
-```bash
-# Development server
-npm run dev
-
-# Build for production
-npm run build
-
-# Start production server
-npm start
-
-# Lint code
-npm run lint
-```
+| Package | Version | Purpose |
+|---------|---------|---------|
+| `next` | 16 | React framework (App Router) |
+| `react` | 19 | UI library |
+| `tailwindcss` | 4 | Utility-first CSS |
+| `shadcn/ui` (radix-ui) | — | Accessible UI component primitives |
+| `@tanstack/react-query` | 5 | Server state, caching, mutations |
+| `socket.io-client` | 4 | WebSocket connection to backend |
+| `@tiptap/react` | 3 | Rich-text editor (20+ extensions) |
+| `yjs` + `y-prosemirror` | — | CRDT collaboration layer (Yjs-ready) |
+| `next-themes` | — | System-aware dark/light mode |
+| `lucide-react` | — | Icon library |
+| `date-fns` | 4 | Date formatting |
+| `react-day-picker` | 9 | Calendar / date picker |
+| `sonner` | — | Toast notifications |
+| `react-hotkeys-hook` | — | Keyboard shortcuts |
+| `lodash.throttle` | — | Throttle cursor events |
 
 ## Project Structure
 
 ```
 src/
-├── app/                    # Next.js App Router pages
-│   ├── auth/              # Authentication pages
-│   ├── board/             # Board/Kanban view
-│   ├── dashboard/         # Main dashboard
-│   ├── notes/             # Notes page
-│   └── workspace/         # Workspace pages
-├── contexts/              # React contexts
-│   └── auth-context.tsx   # Authentication context
-├── lib/                   # Utilities and helpers
-│   ├── api.ts            # API client
-│   └── utils.ts          # Utility functions
-└── components/            # Reusable components (future)
+├── app/
+│   ├── layout.tsx                  # Root layout with providers
+│   ├── (auth)/                     # Public auth routes
+│   │   ├── login/page.tsx
+│   │   └── register/page.tsx
+│   └── (app)/                      # Protected app routes
+│       ├── dashboard/page.tsx      # Workspace list + creation
+│       ├── workspace/[id]/page.tsx # Workspace boards overview
+│       ├── board/[id]/page.tsx     # Kanban board with columns & tasks
+│       ├── notes/page.tsx          # Collaborative notes (autosave)
+│       └── calendar/page.tsx       # Calendar view of tasks by due date
+│
+├── components/
+│   ├── ui/                         # shadcn/ui base components
+│   ├── board/                      # Column, TaskCard, drag-drop wrappers
+│   ├── notes/                      # NotesList, NoteEditor
+│   ├── workspace/                  # WorkspaceCard, MemberList, InviteDialog
+│   └── tiptap-templates/simple/    # SimpleEditor (Tiptap, Yjs-ready)
+│
+├── contexts/
+│   ├── auth-context.tsx            # JWT token, user state, login/logout
+│   ├── socket-context.tsx          # Socket.IO singleton, joinRoom/leaveRoom, presence
+│   └── theme-context.tsx           # next-themes wrapper
+│
+├── hooks/
+│   ├── use-realtime.ts             # useBoardRealtime, useNoteRealtime
+│   ├── use-boards.ts               # TanStack Query mutations for boards
+│   ├── use-columns.ts              # TanStack Query mutations for columns
+│   ├── use-tasks.ts                # TanStack Query mutations for tasks
+│   ├── use-notes.ts                # TanStack Query mutations for notes
+│   └── use-workspaces.ts           # TanStack Query queries/mutations for workspaces
+│
+├── lib/
+│   ├── api.ts                      # Typed fetch wrapper (JWT header injected)
+│   └── utils.ts                    # cn(), formatDate(), misc utilities
+│
+├── providers/
+│   └── query-client-provider.tsx   # TanStack QueryClientProvider
+│
+└── styles/
+    └── globals.css                 # Tailwind base + CSS custom properties
 ```
 
-## Features Overview
+## Key Architecture Decisions
 
-### Authentication
-- Login and register pages
-- JWT token management
-- Protected routes
+### State Management
 
-### Dashboard
-- View all workspaces
-- Create new workspaces
-- Navigate to boards
+- **REST data** (boards, tasks, notes, users) is managed by **TanStack Query v5** — queries, mutations, and optimistic updates
+- **Real-time events** from Socket.IO directly call `queryClient.setQueryData()` to patch the cache without a network re-fetch
+- **Auth state** lives in `AuthContext` (React Context) and persists to `localStorage`
 
-### Workspaces
-- Manage boards within a workspace
-- Create new boards
-- View board details
+### Socket.IO Integration
 
-### Kanban Board
-- Drag-and-drop tasks between columns
-- Create, edit, and delete tasks
-- Task priorities (Low, Medium, High)
-- Visual task organization
+`SocketContext` (`contexts/socket-context.tsx`) creates a single Socket.IO connection per authenticated session:
 
-### Notes
-- Create and edit notes
-- Organize notes by workspace
-- Simple text editor
+```ts
+const socket = io(WS_URL, {
+  auth: { token },
+  transports: ['websocket'],   // no long-polling fallback
+});
+```
 
-## API Integration
+Rooms are joined with `joinRoom(room)` which also broadcasts presence metadata (name, avatar, current page).  
+`useSocket()` exposes `{ socket, joinRoom, leaveRoom, onlineUsers }`.
 
-The frontend communicates with the backend API using the API client (`src/lib/api.ts`). All requests include JWT authentication tokens when available.
+### Realtime Hooks
 
-## Contributing
+`useBoardRealtime(boardId, callbacks)` — joins `board:{boardId}` room, listens for:
+- `task:created`, `task:updated`, `task:deleted`, `task:moved`
+- `column:created`, `column:updated`
+- `cursor:update`
 
-1. Create a feature branch
-2. Make your changes
-3. Test thoroughly
-4. Submit a pull request
+`useNoteRealtime(workspaceId, callbacks)` — joins `workspace:{workspaceId}` room, listens for:
+- `note:created`, `note:updated`, `note:deleted`
+- `note:typing`, `note:stop-typing`
+
+### Notes Autosave
+
+The notes page uses a 2-second debounce autosave:
+
+```
+Keystroke → setEditingContent + emit note:typing
+          → scheduleAutosave (clearTimeout + setTimeout 2 s)
+          → handleSaveNote → PATCH /notes/:id → emit note:stop-typing
+```
+
+Stale-closure issues are avoided by keeping content in `useRef` and reading from the ref inside the save handler.
+
+### Tiptap Editor
+
+`SimpleEditor` (`components/tiptap-templates/simple/simple-editor.tsx`) supports two modes:
+
+- **HTML autosave mode** (default): `content` + `onChange` props, stores Tiptap HTML
+- **Yjs CRDT mode**: pass `ydoc`, `awareness`, and `user` props to enable `Collaboration` + `CollaborationCursor` extensions
+
+Extensions included: StarterKit, Highlight, Link, Image, CodeBlock (lowlight), Table, TaskList, TextAlign, Typography, Underline, Subscript, Superscript, Placeholder, and more.
+
+## Environment Variables
+
+Create `apps/frontend/.env.local`:
+
+```env
+NEXT_PUBLIC_API_URL=http://127.0.0.1:3000
+NEXT_PUBLIC_WS_URL=http://127.0.0.1:3000
+```
+
+For production (Vercel):
+
+```env
+NEXT_PUBLIC_API_URL=https://your-backend.railway.app
+NEXT_PUBLIC_WS_URL=https://your-backend.railway.app
+```
+
+## Running Locally
+
+```bash
+# From monorepo root
+npm install
+
+# Start backend first (see apps/backend/README.md)
+
+# Then start frontend
+npm run dev:frontend
+# http://localhost:3001
+```
+
+Or from this directory:
+
+```bash
+npm run dev     # http://localhost:3000 (default Next.js port)
+npm run build   # Production build
+npm start       # Serve production build
+npm run lint    # ESLint
+```
+
+## Deployment (Vercel)
+
+1. Import the monorepo on [vercel.com](https://vercel.com)
+2. **Root Directory**: `apps/frontend`
+3. **Framework Preset**: Next.js
+4. **Install Command** (override): `cd ../.. && npm install && npm run build:shared`
+5. **Build Command** (override): `npm run build`
+6. **Environment variables**: set `NEXT_PUBLIC_API_URL` and `NEXT_PUBLIC_WS_URL`
+
+The install command builds `packages/shared-types` first so the frontend can resolve `@task-app/shared-types`.
 
 ## License
 
