@@ -1,0 +1,83 @@
+/* =====================
+   TABLE NODE STYLES
+   ===================== */
+.tiptap.ProseMirror {
+  --table-border-color: var(--tt-gray-light-a-200);
+  --table-header-bg: var(--tt-gray-light-50, #f8fafc);
+  --table-cell-selected-bg: var(--tt-blue-light-100, #dbeafe);
+  --table-handle-color: var(--tt-gray-light-400, #94a3b8);
+
+  .dark & {
+    --table-border-color: var(--tt-gray-dark-a-200);
+    --table-header-bg: var(--tt-gray-dark-800, #1e293b);
+    --table-cell-selected-bg: var(--tt-blue-dark-900, #1e3a5f);
+    --table-handle-color: var(--tt-gray-dark-500, #64748b);
+  }
+
+  table {
+    border-collapse: collapse;
+    width: 100%;
+    margin: 1.5em 0;
+    overflow: hidden;
+    table-layout: fixed;
+    border-radius: 8px;
+    border: 1px solid var(--table-border-color);
+
+    td,
+    th {
+      min-width: 1em;
+      border: 1px solid var(--table-border-color);
+      padding: 0.5em 0.75em;
+      vertical-align: top;
+      box-sizing: border-box;
+      position: relative;
+
+      > * {
+        margin-bottom: 0;
+      }
+
+      p {
+        margin: 0;
+      }
+    }
+
+    th {
+      font-weight: 600;
+      text-align: left;
+      background-color: var(--table-header-bg);
+    }
+
+    .selectedCell:after {
+      z-index: 2;
+      position: absolute;
+      content: "";
+      left: 0;
+      right: 0;
+      top: 0;
+      bottom: 0;
+      background: var(--table-cell-selected-bg);
+      opacity: 0.35;
+      pointer-events: none;
+    }
+
+    .column-resize-handle {
+      position: absolute;
+      right: -2px;
+      top: 0;
+      bottom: -2px;
+      width: 4px;
+      background-color: var(--table-handle-color);
+      pointer-events: none;
+    }
+  }
+
+  .tableWrapper {
+    padding: 1rem 0;
+    overflow-x: auto;
+  }
+
+  &.resize-cursor {
+    cursor: ew-resize;
+    cursor: col-resize;
+  }
+}

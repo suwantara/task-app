@@ -561,7 +561,7 @@ export default function NotesPage() {
 
 
             {/* Rich Text Editor */}
-            <div className="flex-1 overflow-hidden">
+            <div className="flex-1 overflow-auto">
               <SimpleEditor
                 key={`editor-${selectedNote?.id}`}
                 content={editingContent}

@@ -16,6 +16,10 @@ import { Superscript } from "@tiptap/extension-superscript"
 import { Selection } from "@tiptap/extensions"
 import Collaboration from '@tiptap/extension-collaboration'
 import CollaborationCursor from '@tiptap/extension-collaboration-cursor'
+import { Table } from "@tiptap/extension-table"
+import { TableRow } from "@tiptap/extension-table-row"
+import { TableCell } from "@tiptap/extension-table-cell"
+import { TableHeader } from "@tiptap/extension-table-header"
 import type { Awareness } from 'y-protocols/awareness'
 
 // --- UI Primitives ---
@@ -37,6 +41,7 @@ import "@/components/tiptap-node/list-node/list-node.scss"
 import "@/components/tiptap-node/image-node/image-node.scss"
 import "@/components/tiptap-node/heading-node/heading-node.scss"
 import "@/components/tiptap-node/paragraph-node/paragraph-node.scss"
+import "@/components/tiptap-node/table-node/table-node.scss"
 
 // --- Tiptap UI ---
 import { HeadingDropdownMenu } from "@/components/tiptap-ui/heading-dropdown-menu"
@@ -44,6 +49,7 @@ import { ImageUploadButton } from "@/components/tiptap-ui/image-upload-button"
 import { ListDropdownMenu } from "@/components/tiptap-ui/list-dropdown-menu"
 import { BlockquoteButton } from "@/components/tiptap-ui/blockquote-button"
 import { CodeBlockButton } from "@/components/tiptap-ui/code-block-button"
+import { TableButton } from "@/components/tiptap-ui/table-button"
 import {
   ColorHighlightPopover,
   ColorHighlightPopoverContent,
@@ -155,6 +161,12 @@ const MainToolbarContent = ({
         <ImageUploadButton text="Add" />
       </ToolbarGroup>
 
+      <ToolbarSeparator />
+
+      <ToolbarGroup>
+        <TableButton />
+      </ToolbarGroup>
+
       <Spacer />
     </>
   )
@@ -231,6 +243,10 @@ export function SimpleEditor({ content: initialContent = '', onChange, placehold
       Superscript,
       Subscript,
       Selection,
+      Table.configure({ resizable: true }),
+      TableRow,
+      TableCell,
+      TableHeader,
       ImageUploadNode.configure({
         accept: "image/*",
         maxSize: MAX_FILE_SIZE,
