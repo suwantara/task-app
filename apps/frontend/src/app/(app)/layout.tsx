@@ -15,6 +15,7 @@ import { useWorkspaceRealtime } from '@/hooks/use-realtime';
 import { useQueryClient } from '@tanstack/react-query';
 import { queryKeys } from '@/hooks/use-queries';
 import { RealTimeClock } from '@/components/realtime-clock';
+import { ThemeToggle } from '@/components/theme-toggle';
 
 // Wrapper component to use hooks inside SocketProvider
 function PagePresenceTracker() {
@@ -77,6 +78,7 @@ export default function AppLayout({ children }: Readonly<{ children: React.React
                   <RealTimeClock />
                 </div>
                 <PresenceIndicator />
+                <ThemeToggle />
               </header>
               <main className="flex-1 overflow-hidden">{children}</main>
             </SidebarInset>

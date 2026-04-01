@@ -126,4 +126,12 @@
   body {
     @apply bg-background text-foreground;
   }
+  ::selection {
+    background-color: oklch(0.6 0.2 250 / 40%);
+    color: inherit;
+  }
+  .dark ::selection {
+    background-color: oklch(0.7 0.18 200 / 55%);
+    color: #fff;
+  }
 }
