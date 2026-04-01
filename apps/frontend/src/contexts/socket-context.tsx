@@ -86,13 +86,13 @@ export function SocketProvider({ children }: Readonly<{ children: React.ReactNod
           // or if no oldSessionId provided (broadcast to all)
           if (!data?.oldSessionId || payload.sid === data.oldSessionId) {
             apiClient.setToken(null);
-            window.location.href = '/login';
+            window.location.href = '/auth/login';
           }
         }
       } catch {
         // If we can't decode, force logout to be safe
         apiClient.setToken(null);
-        window.location.href = '/login';
+        window.location.href = '/auth/login';
       }
     });
 

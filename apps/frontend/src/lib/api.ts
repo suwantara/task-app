@@ -58,7 +58,7 @@ class ApiClient {
       ) {
         this.isRedirecting = true;
         this.setToken(null);
-        window.location.href = '/login';
+        window.location.href = '/auth/login';
         // Throw immediately to prevent further processing
         throw new Error('Session expired');
       }
