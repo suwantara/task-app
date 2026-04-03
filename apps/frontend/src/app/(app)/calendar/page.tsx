@@ -1,17 +1,34 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useRef, useCallback } from 'react';
 import { useAuthGuard } from '@/hooks/use-auth-guard';
 import { useWorkspace } from '@/contexts/workspace-context';
 import { useRouter } from 'next/navigation';
 import { format, isSameDay, startOfMonth, endOfMonth, eachDayOfInterval, startOfWeek, endOfWeek } from 'date-fns';
 import { PRIORITY_CONFIG } from '@/lib/api';
 import type { TaskPriority, Task } from '@/lib/api';
-import { useAllWorkspaceTasks } from '@/hooks/use-queries';
+import { useAllWorkspaceTasks, useCreateTask } from '@/hooks/use-queries';
 import { PageLoading } from '@/components/page-loading';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from '@/components/ui/dialog';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import {
   Tooltip,
   TooltipContent,
@@ -22,6 +39,7 @@ import {
   ChevronRight,
   CalendarDays,
   Circle,
+  Plus,
 } from 'lucide-react';
 
 interface TaskWithBoard extends Task {
@@ -36,8 +54,63 @@ export default function CalendarPage() {
   const workspaceId = activeWorkspace?.id || '';
 
   const { data, isLoading } = useAllWorkspaceTasks(workspaceId);
+  const createTask = useCreateTask();
 
   const [currentMonth, setCurrentMonth] = useState(new Date());
+
+  // Context menu state
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; date: Date } | null>(null);
+  const contextMenuRef = useRef<HTMLDivElement>(null);
+
+  // Add Task dialog state
+  const [addTaskOpen, setAddTaskOpen] = useState(false);
+  const [addTaskDate, setAddTaskDate] = useState<Date | null>(null);
+  const [taskTitle, setTaskTitle] = useState('');
+  const [taskDescription, setTaskDescription] = useState('');
+  const [taskBoardId, setTaskBoardId] = useState('');
+  const [taskColumnId, setTaskColumnId] = useState('');
+  const [taskPriority, setTaskPriority] = useState<TaskPriority>('MEDIUM');
+
+  const availableBoards = useMemo(() => data?.boards ?? [], [data]);
+  const availableColumns = useMemo(() => {
+    if (!taskBoardId) return [];
+    const found = data?.boardResults?.find((r: { board: { id: string } }) => r.board.id === taskBoardId);
+    return (found?.columns ?? []) as { id: string; name: string }[];
+  }, [data, taskBoardId]);
+
+  const handleDayContextMenu = useCallback((e: React.MouseEvent, day: Date) => {
+    e.preventDefault();
+    setContextMenu({ x: e.clientX, y: e.clientY, date: day });
+  }, []);
+
+  const openAddTaskDialog = useCallback((date: Date) => {
+    setAddTaskDate(date);
+    setTaskTitle('');
+    setTaskDescription('');
+    setTaskBoardId(availableBoards[0]?.id ?? '');
+    setTaskColumnId('');
+    setTaskPriority('MEDIUM');
+    setAddTaskOpen(true);
+    setContextMenu(null);
+  }, [availableBoards]);
+
+  const handleAddTaskSubmit = useCallback(async () => {
+    if (!taskTitle.trim() || !taskBoardId || !taskColumnId) return;
+    await createTask.mutateAsync({
+      workspaceId,
+      boardId: taskBoardId,
+      columnId: taskColumnId,
+      title: taskTitle.trim(),
+      description: taskDescription.trim() || undefined,
+      priority: taskPriority,
+      position: 0,
+      ...(addTaskDate ? { dueDate: format(addTaskDate, 'yyyy-MM-dd') } : {}),
+    } as Parameters<typeof createTask.mutateAsync>[0]);
+    setAddTaskOpen(false);
+  }, [taskTitle, taskBoardId, taskColumnId, taskDescription, taskPriority, addTaskDate, workspaceId, createTask]);
+
+  // Close context menu on outside click
+  const handleCloseContextMenu = useCallback(() => setContextMenu(null), []);
 
   // Flatten tasks and add board/column names
   const allTasks: TaskWithBoard[] = useMemo(() => {
@@ -99,7 +172,7 @@ export default function CalendarPage() {
   }
 
   return (
-    <div className="flex h-full flex-col">
+    <div className="flex h-full flex-col" onClick={handleCloseContextMenu} onKeyDown={(e) => e.key === 'Escape' && handleCloseContextMenu()} role="none">
       {/* Header */}
       <div className="flex items-center justify-between border-b px-6 py-3">
         <div className="flex items-center gap-3">
@@ -152,9 +225,15 @@ export default function CalendarPage() {
                 return (
                   <div
                     key={dateKey}
-                    className={`min-h-[100px] border-b border-r p-1 ${
+                    className={`group relative min-h-[100px] cursor-default border-b border-r p-1 ${
                       isCurrentMonth ? 'bg-background' : 'bg-muted/30'
                     }`}
+                    onContextMenu={(e) => handleDayContextMenu(e, day)}
+                    onKeyDown={(e) => e.key === 'Enter' && openAddTaskDialog(day)}
+                    onClick={(e) => e.stopPropagation()}
+                    tabIndex={0}
+                    role="button"
+                    aria-label={format(day, 'MMMM d, yyyy')}
                   >
                     <div className="mb-0.5 flex items-center justify-between px-1">
                       <span
@@ -168,11 +247,13 @@ export default function CalendarPage() {
                       >
                         {format(day, 'd')}
                       </span>
-                      {dayTasks.length > 0 && (
-                        <span className="text-[10px] text-muted-foreground">
-                          {dayTasks.length}
-                        </span>
-                      )}
+                      <button
+                        onClick={(e) => { e.stopPropagation(); openAddTaskDialog(day); }}
+                        className="hidden size-4 items-center justify-center rounded text-muted-foreground opacity-0 transition-opacity hover:bg-accent hover:text-foreground group-hover:flex group-hover:opacity-100"
+                        title="Add task"
+                      >
+                        <Plus className="size-3" />
+                      </button>
                     </div>
                     <div className="space-y-0.5">
                       {dayTasks.slice(0, 3).map((task) => (
@@ -251,6 +332,118 @@ export default function CalendarPage() {
           </ScrollArea>
         </div>
       </div>
+
+      {/* Right-click context menu */}
+      {contextMenu && (
+        <div
+          ref={contextMenuRef}
+          className="fixed z-50 min-w-[150px] overflow-hidden rounded-md border bg-popover py-1 shadow-md"
+          style={{ top: contextMenu.y, left: contextMenu.x }}
+          onClick={(e) => e.stopPropagation()}
+          onKeyDown={(e) => e.key === 'Escape' && handleCloseContextMenu()}
+          tabIndex={-1}
+          role="menu"
+          aria-label="Date options"
+        >
+          <button
+            className="flex w-full items-center gap-2 px-3 py-1.5 text-sm hover:bg-accent"
+            onClick={() => openAddTaskDialog(contextMenu.date)}
+          >
+            <Plus className="size-3.5" />
+            Add Task on {format(contextMenu.date, 'MMM d')}
+          </button>
+        </div>
+      )}
+
+      {/* Add Task Dialog */}
+      <Dialog open={addTaskOpen} onOpenChange={setAddTaskOpen}>
+        <DialogContent className="sm:max-w-[440px]">
+          <DialogHeader>
+            <DialogTitle>
+              Add Task — {addTaskDate ? format(addTaskDate, 'MMMM d, yyyy') : ''}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-1.5">
+              <Label htmlFor="task-title">Title <span className="text-destructive">*</span></Label>
+              <Input
+                id="task-title"
+                placeholder="Task title"
+                value={taskTitle}
+                onChange={(e) => setTaskTitle(e.target.value)}
+                autoFocus
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="task-desc">Description</Label>
+              <Textarea
+                id="task-desc"
+                placeholder="Optional description…"
+                rows={3}
+                value={taskDescription}
+                onChange={(e) => setTaskDescription(e.target.value)}
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label>Board <span className="text-destructive">*</span></Label>
+                <Select
+                  value={taskBoardId}
+                  onValueChange={(v) => { setTaskBoardId(v); setTaskColumnId(''); }}
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="Select board" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {availableBoards.map((b: { id: string; name: string }) => (
+                      <SelectItem key={b.id} value={b.id}>{b.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1.5">
+                <Label>Column <span className="text-destructive">*</span></Label>
+                <Select
+                  value={taskColumnId}
+                  onValueChange={setTaskColumnId}
+                  disabled={!taskBoardId}
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="Select column" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {availableColumns.map((c) => (
+                      <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div className="space-y-1.5">
+              <Label>Priority</Label>
+              <Select value={taskPriority} onValueChange={(v) => setTaskPriority(v as TaskPriority)}>
+                <SelectTrigger className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {(['LOW', 'MEDIUM', 'HIGH', 'URGENT'] as TaskPriority[]).map((p) => (
+                    <SelectItem key={p} value={p}>{p}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setAddTaskOpen(false)}>Cancel</Button>
+            <Button
+              onClick={handleAddTaskSubmit}
+              disabled={!taskTitle.trim() || !taskBoardId || !taskColumnId || createTask.isPending}
+            >
+              {createTask.isPending ? 'Adding…' : 'Add Task'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
