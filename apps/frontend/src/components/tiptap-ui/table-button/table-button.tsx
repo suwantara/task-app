@@ -1,6 +1,6 @@
 "use client"
 
-import { forwardRef, useState } from "react"
+import { forwardRef, useEffect, useRef, useState } from "react"
 import { TableIcon, PlusCircleIcon, Trash2Icon, ChevronDownIcon } from "lucide-react"
 
 import { useTiptapEditor } from "@/hooks/use-tiptap-editor"
@@ -22,6 +22,20 @@ export const TableButton = forwardRef<HTMLButtonElement, TableButtonProps>(
   ({ editor: providedEditor, ...buttonProps }, ref) => {
     const { editor } = useTiptapEditor(providedEditor)
     const [open, setOpen] = useState(false)
+    const [popupPos, setPopupPos] = useState({ top: 0, left: 0 })
+    const wrapperRef = useRef<HTMLDivElement>(null)
+
+    // Close on scroll/resize to avoid stale position
+    useEffect(() => {
+      if (!open) return
+      const close = () => setOpen(false)
+      window.addEventListener("scroll", close, true)
+      window.addEventListener("resize", close)
+      return () => {
+        window.removeEventListener("scroll", close, true)
+        window.removeEventListener("resize", close)
+      }
+    }, [open])
 
     const {
       isTableActive,
@@ -65,7 +79,7 @@ export const TableButton = forwardRef<HTMLButtonElement, TableButtonProps>(
 
     // Inside a table — show dropdown with options
     return (
-      <div className="table-button-wrapper" style={{ position: "relative", display: "inline-block" }}>
+      <div ref={wrapperRef} className="table-button-wrapper" style={{ position: "relative", display: "inline-block" }}>
         <Button
           type="button"
           data-style="ghost"
@@ -74,7 +88,13 @@ export const TableButton = forwardRef<HTMLButtonElement, TableButtonProps>(
           tabIndex={-1}
           aria-label="Table options"
           tooltip="Table Options"
-          onClick={() => setOpen((prev) => !prev)}
+          onClick={() => {
+            if (wrapperRef.current) {
+              const rect = wrapperRef.current.getBoundingClientRect()
+              setPopupPos({ top: rect.bottom + 4, left: rect.left })
+            }
+            setOpen((prev) => !prev)
+          }}
           {...buttonProps}
           ref={ref}
         >
@@ -89,17 +109,17 @@ export const TableButton = forwardRef<HTMLButtonElement, TableButtonProps>(
               style={{
                 position: "fixed",
                 inset: 0,
-                zIndex: 49,
+                zIndex: 9998,
               }}
               onClick={() => setOpen(false)}
             />
             <div
               className="table-dropdown-menu"
               style={{
-                position: "absolute",
-                top: "calc(100% + 4px)",
-                left: 0,
-                zIndex: 50,
+                position: "fixed",
+                top: popupPos.top,
+                left: popupPos.left,
+                zIndex: 9999,
                 minWidth: 200,
                 background: "var(--tt-toolbar-bg-color)",
                 border: "1px solid var(--tt-toolbar-border-color)",
