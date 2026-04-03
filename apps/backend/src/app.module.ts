@@ -12,6 +12,7 @@ import { TasksModule } from './tasks/tasks.module';
 import { RealtimeModule } from './realtime/realtime.module';
 import { NotesModule } from './notes/notes.module';
 import { CacheModule } from './cache/cache.module';
+import { HolidaysModule } from './holidays/holidays.module';
 
 import { CommonModule } from './common/common.module';
 
@@ -29,6 +30,7 @@ import { CommonModule } from './common/common.module';
     TasksModule,
     RealtimeModule,
     NotesModule,
+    HolidaysModule,
   ],
   controllers: [AppController],
   providers: [AppService],

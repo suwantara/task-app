@@ -1,0 +1,58 @@
+name: Scrape & Update Holidays
+
+on:
+  schedule:
+    # Runs at 01:00 UTC on 1 January each year
+    - cron: '0 1 1 1 *'
+  workflow_dispatch:
+    inputs:
+      year:
+        description: 'Year to scrape (leave blank for current year)'
+        required: false
+        default: ''
+
+jobs:
+  scrape:
+    name: Scrape haripenting.php
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: apps/backend
+
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: apps/backend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate Prisma client
+        run: npx prisma generate
+
+      - name: Determine year argument
+        id: year
+        run: |
+          INPUT_YEAR="${{ github.event.inputs.year }}"
+          if [ -n "$INPUT_YEAR" ]; then
+            echo "arg=--year=$INPUT_YEAR" >> "$GITHUB_OUTPUT"
+          else
+            echo "arg=--year=$(date +%Y)" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Scrape and upsert holidays
+        run: |
+          npm run seed -- ${{ steps.year.outputs.arg }}
+
+      - name: Log summary
+        run: echo "Holiday scrape complete for ${{ steps.year.outputs.arg }}"

@@ -237,3 +237,26 @@ model Note {
 
   @@map("notes")
 }
+
+// ============================================
+// HOLIDAYS
+// ============================================
+
+enum HolidayType {
+  national      // Hari Libur Nasional
+  balinese      // Hari Raya / Hari Fakultatif Bali
+  joint_leave   // Cuti Bersama
+  commemoration // Hari Peringatan (non-holiday, informational)
+}
+
+model Holiday {
+  id        String      @id @default(uuid())
+  date      DateTime    @db.Date
+  name      String
+  type      HolidayType
+  source    String?
+
+  @@unique([date, name])
+  @@index([date])
+  @@map("holidays")
+}

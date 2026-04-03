@@ -190,6 +190,7 @@ export default function CalendarPage() {
       case 'national': return 'bg-red-500/15 text-red-600 dark:text-red-400';
       case 'joint-leave': return 'bg-orange-400/15 text-orange-600 dark:text-orange-400';
       case 'balinese': return 'bg-yellow-400/15 text-yellow-700 dark:text-yellow-400';
+      case 'commemoration': return 'bg-purple-400/15 text-purple-700 dark:text-purple-400';
     }
   };
 
@@ -310,6 +311,7 @@ export default function CalendarPage() {
                               {holiday.type === 'national' && 'Hari Libur Nasional'}
                               {holiday.type === 'joint-leave' && 'Cuti Bersama'}
                               {holiday.type === 'balinese' && 'Hari Raya Bali'}
+                              {holiday.type === 'commemoration' && 'Hari Peringatan'}
                             </p>
                           </TooltipContent>
                         </Tooltip>
@@ -366,6 +368,7 @@ export default function CalendarPage() {
                     let typeName = 'Hari Raya Bali';
                     if (h.type === 'national') { dotColor = 'bg-red-500'; typeName = 'Libur Nasional'; }
                     else if (h.type === 'joint-leave') { dotColor = 'bg-orange-400'; typeName = 'Cuti Bersama'; }
+                    else if (h.type === 'commemoration') { dotColor = 'bg-purple-400'; typeName = 'Hari Peringatan'; }
                     return (
                       <div
                         key={`${h.date}-${h.name}`}
