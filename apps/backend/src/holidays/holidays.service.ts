@@ -44,10 +44,14 @@ export class HolidaysService {
   // Map Prisma enum → frontend string type
   private mapType(type: HolidayType): string {
     switch (type) {
-      case HolidayType.national:      return 'national';
-      case HolidayType.balinese:      return 'balinese';
-      case HolidayType.joint_leave:   return 'joint-leave';
-      case HolidayType.commemoration: return 'commemoration';
+      case HolidayType.national:
+        return 'national';
+      case HolidayType.balinese:
+        return 'balinese';
+      case HolidayType.joint_leave:
+        return 'joint-leave';
+      case HolidayType.commemoration:
+        return 'commemoration';
     }
   }
 }

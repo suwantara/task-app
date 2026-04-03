@@ -6,5 +6,5 @@ export class QueryHolidaysDto {
   @IsInt()
   @Min(2000)
   @Max(2200)
-  year: number;
+  year!: number;
 }
