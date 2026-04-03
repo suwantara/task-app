@@ -8,6 +8,8 @@ import { format, isSameDay, startOfMonth, endOfMonth, eachDayOfInterval, startOf
 import { PRIORITY_CONFIG } from '@/lib/api';
 import type { TaskPriority, Task } from '@/lib/api';
 import { useAllWorkspaceTasks, useCreateTask } from '@/hooks/use-queries';
+import { useHolidays } from '@/hooks/use-holidays';
+import type { Holiday } from '@/lib/holidays';
 import { PageLoading } from '@/components/page-loading';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -40,6 +42,7 @@ import {
   CalendarDays,
   Circle,
   Plus,
+  Star,
 } from 'lucide-react';
 
 interface TaskWithBoard extends Task {
@@ -55,6 +58,7 @@ export default function CalendarPage() {
 
   const { data, isLoading } = useAllWorkspaceTasks(workspaceId);
   const createTask = useCreateTask();
+  const { holidayMap } = useHolidays();
 
   const [currentMonth, setCurrentMonth] = useState(new Date());
 
@@ -160,11 +164,33 @@ export default function CalendarPage() {
     setCurrentMonth((d) => new Date(d.getFullYear(), d.getMonth() + 1, 1));
   const goToday = () => setCurrentMonth(new Date());
 
+  // Holidays in the currently viewed month, sorted by date
+  const monthHolidays = useMemo(() => {
+    const year = currentMonth.getFullYear();
+    const month = currentMonth.getMonth();
+    const results: { date: string; name: string; type: Holiday['type'] }[] = [];
+    for (const [dateKey, holidays] of holidayMap.entries()) {
+      const d = new Date(dateKey);
+      if (d.getFullYear() === year && d.getMonth() === month) {
+        for (const h of holidays) results.push(h);
+      }
+    }
+    return results.sort((a, b) => a.date.localeCompare(b.date));
+  }, [currentMonth, holidayMap]);
+
   const today = new Date();
   const weekDays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
   const getPriorityColor = (priority: TaskPriority) => {
     return PRIORITY_CONFIG[priority]?.color || 'bg-gray-400';
+  };
+
+  const getHolidayBadgeClass = (type: Holiday['type']) => {
+    switch (type) {
+      case 'national': return 'bg-red-500/15 text-red-600 dark:text-red-400';
+      case 'joint-leave': return 'bg-orange-400/15 text-orange-600 dark:text-orange-400';
+      case 'balinese': return 'bg-yellow-400/15 text-yellow-700 dark:text-yellow-400';
+    }
   };
 
   if (authLoading || isLoading) {
@@ -200,7 +226,7 @@ export default function CalendarPage() {
 
       <div className="flex flex-1 overflow-hidden">
         {/* Calendar Grid */}
-        <div className="flex flex-1 flex-col overflow-hidden">
+        <div className="flex flex-1 flex-col overflow-auto">
           {/* Day headers */}
           <div className="grid grid-cols-7 border-b">
             {weekDays.map((day) => (
@@ -214,19 +240,25 @@ export default function CalendarPage() {
           </div>
 
           {/* Day cells */}
-          <ScrollArea className="flex-1">
+          <div className="flex-1">
             <div className="grid grid-cols-7">
               {calendarDays.map((day) => {
                 const dateKey = format(day, 'yyyy-MM-dd');
                 const dayTasks = tasksByDate.get(dateKey) || [];
+                const dayHolidays = holidayMap.get(dateKey) || [];
                 const isCurrentMonth = day.getMonth() === currentMonth.getMonth();
                 const isToday = isSameDay(day, today);
+                const hasHoliday = dayHolidays.length > 0;
 
                 return (
                   <div
                     key={dateKey}
                     className={`group relative min-h-[100px] cursor-default border-b border-r p-1 ${
-                      isCurrentMonth ? 'bg-background' : 'bg-muted/30'
+                      hasHoliday && isCurrentMonth
+                        ? 'bg-red-50/40 dark:bg-red-950/10'
+                        : isCurrentMonth
+                          ? 'bg-background'
+                          : 'bg-muted/30'
                     }`}
                     onContextMenu={(e) => handleDayContextMenu(e, day)}
                     onKeyDown={(e) => e.key === 'Enter' && openAddTaskDialog(day)}
@@ -236,17 +268,22 @@ export default function CalendarPage() {
                     aria-label={format(day, 'MMMM d, yyyy')}
                   >
                     <div className="mb-0.5 flex items-center justify-between px-1">
-                      <span
-                        className={`text-xs font-medium ${
-                          isToday
-                            ? 'flex size-6 items-center justify-center rounded-full bg-primary text-primary-foreground'
-                            : isCurrentMonth
-                              ? 'text-foreground'
-                              : 'text-muted-foreground'
-                        }`}
-                      >
-                        {format(day, 'd')}
-                      </span>
+                      <div className="flex items-center gap-1">
+                        <span
+                          className={`text-xs font-medium ${
+                            isToday
+                              ? 'flex size-6 items-center justify-center rounded-full bg-primary text-primary-foreground'
+                              : isCurrentMonth
+                                ? 'text-foreground'
+                                : 'text-muted-foreground'
+                          }`}
+                        >
+                          {format(day, 'd')}
+                        </span>
+                        {hasHoliday && isCurrentMonth && (
+                          <Star className="size-2.5 fill-current text-yellow-500" />
+                        )}
+                      </div>
                       <button
                         onClick={(e) => { e.stopPropagation(); openAddTaskDialog(day); }}
                         className="hidden size-4 items-center justify-center rounded text-muted-foreground opacity-0 transition-opacity hover:bg-accent hover:text-foreground group-hover:flex group-hover:opacity-100"
@@ -256,6 +293,27 @@ export default function CalendarPage() {
                       </button>
                     </div>
                     <div className="space-y-0.5">
+                      {dayHolidays.map((holiday) => (
+                        <Tooltip key={`${holiday.date}-${holiday.name}`}>
+                          <TooltipTrigger asChild>
+                            <div
+                              className={`truncate rounded px-1 py-0.5 text-[10px] leading-tight font-medium ${
+                                getHolidayBadgeClass(holiday.type)
+                              }`}
+                            >
+                              {holiday.name}
+                            </div>
+                          </TooltipTrigger>
+                          <TooltipContent side="bottom" className="max-w-[220px]">
+                            <p className="font-medium">{holiday.name}</p>
+                            <p className="text-xs text-muted-foreground capitalize">
+                              {holiday.type === 'national' && 'Hari Libur Nasional'}
+                              {holiday.type === 'joint-leave' && 'Cuti Bersama'}
+                              {holiday.type === 'balinese' && 'Hari Raya Bali'}
+                            </p>
+                          </TooltipContent>
+                        </Tooltip>
+                      ))}
                       {dayTasks.slice(0, 3).map((task) => (
                         <Tooltip key={task.id}>
                           <TooltipTrigger asChild>
@@ -293,7 +351,42 @@ export default function CalendarPage() {
                 );
               })}
             </div>
-          </ScrollArea>
+          </div>
+
+          {/* Holidays this month */}
+          {monthHolidays.length > 0 && (
+            <div className="border-t">
+              <div className="px-6 py-3">
+                <h3 className="mb-2 text-sm font-semibold">
+                  Hari Penting — {format(currentMonth, 'MMMM yyyy')}
+                </h3>
+                <div className="grid grid-cols-2 gap-x-6 gap-y-1 sm:grid-cols-3 lg:grid-cols-4">
+                  {monthHolidays.map((h) => {
+                    let dotColor = 'bg-yellow-500';
+                    let typeName = 'Hari Raya Bali';
+                    if (h.type === 'national') { dotColor = 'bg-red-500'; typeName = 'Libur Nasional'; }
+                    else if (h.type === 'joint-leave') { dotColor = 'bg-orange-400'; typeName = 'Cuti Bersama'; }
+                    return (
+                      <div
+                        key={`${h.date}-${h.name}`}
+                        className="flex items-start gap-2 py-1"
+                      >
+                        <div className={`mt-1 size-2 shrink-0 rounded-full ${dotColor}`} />
+                        <div className="min-w-0">
+                          <p className="truncate text-xs font-medium">{h.name}</p>
+                          <p className="text-[10px] text-muted-foreground">
+                            {format(new Date(h.date), 'EEE, d MMM')}
+                            {' · '}
+                            {typeName}
+                          </p>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Unscheduled sidebar */}
@@ -330,6 +423,7 @@ export default function CalendarPage() {
               )}
             </div>
           </ScrollArea>
+
         </div>
       </div>
 
