@@ -381,7 +381,7 @@ export default function BoardPage() {
         </div>
 
         {/* Columns */}
-        <ScrollArea orientation="horizontal" className="min-h-0 flex-1">
+        <ScrollArea orientation="horizontal" className="h-full min-h-0 flex-1">
           <div className="flex h-full gap-3 p-4">
           {columns.map((column) => {
             const columnTasks = tasks
@@ -392,7 +392,7 @@ export default function BoardPage() {
               <section
                 key={column.id}
                 aria-label={`Column: ${column.name}`}
-                className={`flex max-h-full w-68 shrink-0 flex-col rounded-xl bg-muted/50 ${
+                className={`flex h-full w-68 shrink-0 flex-col rounded-xl bg-muted/50 ${
                   dragOverColumn === column.id
                     ? 'ring-2 ring-primary/50'
                     : ''
