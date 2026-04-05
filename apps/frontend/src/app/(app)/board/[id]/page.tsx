@@ -543,7 +543,7 @@ export default function BoardPage() {
                 )}
 
                 {/* Cards */}
-                <ScrollArea className="flex-1 px-2">
+                <ScrollArea className="min-h-0 flex-1 px-2">
                   <div className="space-y-2 p-1">
                     {columnTasks.map((task) => {
                       const colColor = getColumnColor(column.color);
