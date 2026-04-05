@@ -320,7 +320,7 @@ export default function BoardPage() {
         <div className="flex items-center gap-4 border-b px-6 py-3">
           <Skeleton className="h-6 w-40" />
         </div>
-        <ScrollArea orientation="horizontal" className="min-h-0 flex-1">
+        <div className="flex-1 min-h-0 overflow-x-auto overflow-y-hidden">
           <div className="flex h-full gap-3 p-4">
             {[1, 2, 3].map((i) => (
               <div key={i} className="w-68 shrink-0">
@@ -332,7 +332,7 @@ export default function BoardPage() {
               </div>
             ))}
           </div>
-        </ScrollArea>
+        </div>
       </div>
     );
   }
@@ -381,7 +381,7 @@ export default function BoardPage() {
         </div>
 
         {/* Columns */}
-        <ScrollArea orientation="horizontal" className="h-full min-h-0 flex-1">
+        <div className="flex-1 min-h-0 overflow-x-auto overflow-y-hidden">
           <div className="flex h-full gap-3 p-4">
           {columns.map((column) => {
             const columnTasks = tasks
@@ -725,7 +725,7 @@ export default function BoardPage() {
             )}
           </div>
           </div>
-        </ScrollArea>
+        </div>
 
         {/* Edit Task Dialog */}
         <Dialog
