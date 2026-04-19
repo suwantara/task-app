@@ -99,7 +99,7 @@ describe('AuthService', () => {
 
   describe('login', () => {
     it('should return access token and store session in Redis', async () => {
-      const user = { id: '1', email: 'test@test.com', name: 'Test' };
+      const user = { id: '1', email: 'test@test.com', name: 'Test', avatarUrl: null, createdAt: new Date(), updatedAt: new Date() };
       jest.spyOn(jwtService, 'sign').mockReturnValue('token');
 
       const result = await service.login(user); 

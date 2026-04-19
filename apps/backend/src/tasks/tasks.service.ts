@@ -104,7 +104,6 @@ export class TasksService {
     const task = await this.prisma.task.findUnique({
       where: { id },
       include: {
-        workspace: { include: { members: true } },
         assignee: {
           select: { id: true, name: true, avatarUrl: true },
         },

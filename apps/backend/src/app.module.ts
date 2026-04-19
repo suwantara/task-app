@@ -12,12 +12,19 @@ import { TasksModule } from './tasks/tasks.module';
 import { RealtimeModule } from './realtime/realtime.module';
 import { NotesModule } from './notes/notes.module';
 import { CacheModule } from './cache/cache.module';
-
 import { CommonModule } from './common/common.module';
+import { ThrottlerModule } from '@nestjs/throttler';
 
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
+    ThrottlerModule.forRoot([
+      {
+        name: 'default',
+        ttl: 60000,
+        limit: 100,
+      },
+    ]),
     PrismaModule,
     CacheModule,
     CommonModule,
