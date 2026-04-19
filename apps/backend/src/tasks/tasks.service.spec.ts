@@ -95,7 +95,7 @@ describe('TasksService', () => {
         id: 'member-1',
         userId,
         workspaceId: 'ws-1',
-        role: MemberRole.MEMBER,
+        role: MemberRole.EDITOR,
         joinedAt: new Date(),
       };
       // Correcting the mock response structure to match the new permissions service API

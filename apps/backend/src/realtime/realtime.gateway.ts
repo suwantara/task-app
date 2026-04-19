@@ -11,7 +11,6 @@ import {
 import { Logger } from '@nestjs/common';
 import { Server, Socket } from 'socket.io';
 import { JwtService } from '@nestjs/jwt';
-import * as Y from 'yjs';
 import { CacheService } from '../cache/cache.service';
 
 interface PresenceUser {
@@ -290,10 +289,11 @@ export class RealtimeGateway
     const room = `yjs:${data.noteId}`;
 
     // Merge update into stored doc state in Redis
+    const { mergeUpdates } = await import('yjs');
     const existing = await this.cache.getBuffer(`yjs:doc:${data.noteId}`);
     let merged: Uint8Array;
     if (existing) {
-      merged = Y.mergeUpdates([new Uint8Array(existing), updateArray]);
+      merged = mergeUpdates([new Uint8Array(existing), updateArray]);
     } else {
       merged = updateArray;
     }
