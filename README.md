@@ -1,6 +1,6 @@
 # TaskFlow
 
-> Open-source, real-time collaborative task management app built with NestJS, Next.js, PostgreSQL, and Redis.
+> Open-source, real-time collaborative task management app built with NestJS, Next.js, PostgreSQL, Redis, and Docker.
 
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.x-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 [![NestJS](https://img.shields.io/badge/NestJS-11-E0234E?logo=nestjs&logoColor=white)](https://nestjs.com/)
